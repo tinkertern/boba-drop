@@ -100,6 +100,7 @@ Slack bots play the game as server-side simulated NPC opponents driven via Open 
 
 - **`Shared/Logic/*` must not import from `ServerScriptService/*`.** This keeps logic pure and Lune-testable. Tired-Wednesday-night enforcement: a Lune test that fails if a logic module references a server-only path.
 - **`GameState` is the sole writer for round/match state.** Both gameplay and disconnect paths funnel through `GameState:forfeitRound(playerId, reason)`. `RoomManager` *reads* `GameState` and orchestrates session-level networking, but does not mutate round state.
+- **`RoomManager` is the sole writer for session/lobby state** — queue membership, rematch acceptance, and mid-rematch-window disconnect routing. `GameState` does not own post-match phase state. `DisconnectHandler` checks the current phase (in-round → `GameState:forfeitRound`; post-match-rematch-window → `RoomManager:treatAsLeave`) and routes to the correct writer.
 - **`StateSync` subscribes to `GameState` events** (pub/sub, e.g., `onChainResolved`, `onRoundEnd`, `onMatchEnd`). `GameState` never imports `StateSync`. Prevents circular deps.
 - **Scoring lives in `Scoring.lua`**, not inside `ChainResolver` or `GameState`. `ChainResolver` returns raw counts; `Scoring.compute()` is a pure function; `GameState` applies the result. Each is independently testable.
 - **Bag RNG seed is injected** into `Board` from `GameState` via a constructor / context object. No direct `math.random()` in logic modules. This makes Lune tests reproducible and enables the Daily Challenge stretch (deterministic daily seed).
@@ -275,7 +276,7 @@ Show next 2 pieces in an anchored "preview cluster" frame (next-2-pieces + chain
 
 ### Day 1 — Tue (~6h) — Skeleton + test harness
 
-- **🤖 Engineer:** `Board.lua` (grid + bag RNG injection + gravity + lock delay), `InputHandler.client.lua` (keyboard + touch + safe-area), `PieceTypes.lua` (colors + dot pattern + shape-fallback), `Constants.lua`, `MatchDetector.lua` (pure fn), `tests/MatchDetector.spec.lua` (8+ scenarios)
+- **🤖 Engineer:** `Board.lua` (grid + bag RNG injection + gravity + lock delay + `peek(n)` API for the preview cluster), `InputHandler.client.lua` (keyboard + touch + safe-area), `PieceTypes.lua` (colors + dot pattern + shape-fallback), `Constants.lua`, `MatchDetector.lua` (pure fn), `tests/MatchDetector.spec.lua` (8+ scenarios)
 - **🤖 Producer:** Studio scene assembly, score + chain-counter GUI scaffold, lobby tutorial card with persisted dismiss, daily-log entry
 - **👤 Sarah:** Studio play-column build, playtest keyboard + touch on phone, input feel feedback
 
