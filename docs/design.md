@@ -166,7 +166,7 @@ When a chain triggers, send ice cubes (gray, unmatchable) to opponent:
 3. First overflow loses the round
 4. "Round X to Player Y" banner for 3 seconds
 5. Both fields clear, next round begins
-6. Best of 3 → "Match Winner" screen → rematch / leave
+6. Best of 3 (first to 2 round wins) → "Match Winner" screen → rematch / leave
 
 ### Pre-piece preview
 
