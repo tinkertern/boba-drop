@@ -1,0 +1,16 @@
+# Roblox place files (binary, not git-friendly)
+*.rbxl
+*.rbxlx
+
+# Rojo build artifacts
+build/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
