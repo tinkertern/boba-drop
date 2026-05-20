@@ -98,17 +98,26 @@ makeDot(UIConstants.Colors.PearlPink)
 makeDot(UIConstants.Colors.PearlGreen)
 makeDot(UIConstants.Colors.PearlWhite)
 
+-- RichText body: key verbs are colored + bolded so the rules read with
+-- some rhythm instead of as a wall of dark-brown text. "pop" / "Chain" /
+-- "ice cubes" / "overflow" each take an accent color drawn from the
+-- palette they actually represent in-game.
 local label = Instance.new("TextLabel")
 label.Size = UDim2.new(1, 0, 1, -20)
 label.Position = UDim2.fromOffset(0, 20)
 label.BackgroundTransparency = 1
 label.TextColor3 = UIConstants.Colors.TextDark
 label.TextWrapped = true
+label.RichText = true
 label.TextXAlignment = Enum.TextXAlignment.Left
 label.TextYAlignment = Enum.TextYAlignment.Top
 label.FontFace = UIConstants.Fonts.Tutorial
 label.TextSize = UIConstants.TextSizes.Body
-label.Text = "Match 4+ same-color pearls to pop.\nChain pops send ice cubes to your opponent.\nDon't overflow your cup."
+label.Text = table.concat({
+    "Match <b>4+</b> same-color pearls to <b><font color=\"rgb(255,138,124)\">pop</font></b>.",
+    "<b><font color=\"rgb(255,175,195)\">Chain</font></b> pops send <b><font color=\"rgb(120,180,220)\">ice cubes</font></b> to your opponent.",
+    "Don't <b><font color=\"rgb(255,138,124)\">overflow</font></b> your cup.",
+}, "\n")
 label.Parent = textWrapper
 
 -- Direct child of card (not textWrapper) so the text-padding does not push

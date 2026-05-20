@@ -73,6 +73,17 @@ title.TextColor3 = UIConstants.Colors.TextDark
 title.Text = "Premium Themes Pack"
 title.Parent = modal
 
+-- Soft warm-cream stroke gives the chunky FredokaOne title an extra hint
+-- of weight without losing the cozy feel.
+local titleStroke = Instance.new("UIStroke")
+titleStroke.Color = UIConstants.Colors.StrokeWarm
+titleStroke.Thickness = 2
+titleStroke.Transparency = 0.35
+titleStroke.Parent = title
+
+-- RichText body: theme names colored to each theme's signature pearl
+-- so the description scans as a tasting-menu instead of a uniform line.
+-- "Gameplay-neutral" softened to TextSoft so the theme names lead the eye.
 local body = Instance.new("TextLabel")
 body.Name = "Body"
 body.Size = UDim2.new(1, 0, 0, 100)
@@ -82,9 +93,14 @@ body.FontFace = UIConstants.Fonts.Tutorial
 body.TextSize = UIConstants.TextSizes.Body
 body.TextColor3 = UIConstants.Colors.TextDark
 body.TextWrapped = true
+body.RichText = true
 body.TextXAlignment = Enum.TextXAlignment.Left
 body.TextYAlignment = Enum.TextYAlignment.Top
-body.Text = "Three cosmetic cup themes:\nBrown Sugar Boba, Strawberry Milk, Matcha.\nGameplay-neutral. Just for the vibes."
+body.Text = table.concat({
+    "Three cosmetic cup themes:",
+    "<b><font color=\"rgb(184,121,74)\">Brown Sugar Boba</font></b>, <b><font color=\"rgb(255,156,181)\">Strawberry Milk</font></b>, <b><font color=\"rgb(135,169,107)\">Matcha</font></b>.",
+    "<font color=\"rgb(120,90,70)\"><i>Gameplay-neutral. Just for the vibes.</i></font>",
+}, "\n")
 body.Parent = modal
 
 -- Theme preview swatches: three pearls in each theme's signature color.
@@ -180,6 +196,15 @@ local function previewSwatch(theme, order)
     label.TextXAlignment = Enum.TextXAlignment.Center
     label.Text = theme.name
     label.Parent = cell
+
+    -- Soft warm outline so the name reads as a chunky label on top of
+    -- the cup-tint background instead of as flat text. Subtle on
+    -- purpose — the swatch is the hero, not the label.
+    local labelStroke = Instance.new("UIStroke")
+    labelStroke.Color = UIConstants.Colors.StrokeWarm
+    labelStroke.Thickness = 1
+    labelStroke.Transparency = 0.55
+    labelStroke.Parent = label
 end
 
 previewSwatch(Themes.BrownSugarBoba, 1)
