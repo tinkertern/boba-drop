@@ -45,12 +45,20 @@ cardStroke.Thickness = 2
 cardStroke.Transparency = 0.4
 cardStroke.Parent = card
 
-local cardPadding = Instance.new("UIPadding")
-cardPadding.PaddingTop = UDim.new(0, 14)
-cardPadding.PaddingBottom = UDim.new(0, 14)
-cardPadding.PaddingLeft = UDim.new(0, 18)
-cardPadding.PaddingRight = UDim.new(0, 48) -- reserve space for close button
-cardPadding.Parent = card
+-- Text lives in a wrapper so its UIPadding does not also shift the close
+-- button — the X stays anchored to the card's actual top-right corner.
+local textWrapper = Instance.new("Frame")
+textWrapper.Name = "TextWrapper"
+textWrapper.Size = UDim2.fromScale(1, 1)
+textWrapper.BackgroundTransparency = 1
+textWrapper.Parent = card
+
+local textPadding = Instance.new("UIPadding")
+textPadding.PaddingTop = UDim.new(0, 14)
+textPadding.PaddingBottom = UDim.new(0, 14)
+textPadding.PaddingLeft = UDim.new(0, 18)
+textPadding.PaddingRight = UDim.new(0, 44) -- reserve space for close button
+textPadding.Parent = textWrapper
 
 local label = Instance.new("TextLabel")
 label.Size = UDim2.fromScale(1, 1)
@@ -62,12 +70,14 @@ label.TextYAlignment = Enum.TextYAlignment.Top
 label.FontFace = UIConstants.Fonts.Tutorial
 label.TextSize = UIConstants.TextSizes.Body
 label.Text = "Match 4+ same-color pearls to pop.\nChain pops send ice cubes to your opponent.\nDon't overflow your cup."
-label.Parent = card
+label.Parent = textWrapper
 
+-- Direct child of card (not textWrapper) so the text-padding does not push
+-- this off into the middle. Anchored to the card's actual top-right corner.
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.fromOffset(28, 28)
-closeBtn.Position = UDim2.new(1, -34, 0, 6)
-closeBtn.AnchorPoint = Vector2.new(0, 0)
+closeBtn.Position = UDim2.new(1, -10, 0, 10)
+closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Text = "×"
 closeBtn.FontFace = UIConstants.Fonts.Display
 closeBtn.TextSize = 22
@@ -154,7 +164,7 @@ end)
 -- RoomManager actually drives the match-found transition.
 local queuePanel = Instance.new("Frame")
 queuePanel.Name = "Queue"
-queuePanel.Size = UDim2.fromOffset(300, 92)
+queuePanel.Size = UDim2.fromOffset(340, 116)
 queuePanel.Position = UDim2.fromScale(0.5, 0.45)
 queuePanel.AnchorPoint = Vector2.new(0.5, 0.5)
 queuePanel.BackgroundColor3 = UIConstants.Colors.Cream
@@ -174,13 +184,15 @@ queueStroke.Parent = queuePanel
 
 local queueLabel = Instance.new("TextLabel")
 queueLabel.Name = "Status"
-queueLabel.Size = UDim2.new(1, -24, 0, 28)
+queueLabel.Size = UDim2.new(1, -24, 0, 52) -- tall enough for the 2-line timeout message
 queueLabel.Position = UDim2.fromOffset(12, 10)
 queueLabel.BackgroundTransparency = 1
 queueLabel.FontFace = UIConstants.Fonts.HUD
 queueLabel.TextSize = UIConstants.TextSizes.Body
 queueLabel.TextColor3 = UIConstants.Colors.TextDark
 queueLabel.TextXAlignment = Enum.TextXAlignment.Left
+queueLabel.TextYAlignment = Enum.TextYAlignment.Top
+queueLabel.TextWrapped = true
 queueLabel.Text = "Searching for opponent...  0s"
 queueLabel.Parent = queuePanel
 
