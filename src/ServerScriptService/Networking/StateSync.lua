@@ -48,6 +48,7 @@ function StateSync:wireRoom(room)
                 totalPopped = event.totalPopped,
                 scoreAdded = event.scoreAdded,
                 cells = event.cells,
+                steps = event.steps,
                 isLocal = (tostring(p.UserId) == event.playerId),
             })
         end

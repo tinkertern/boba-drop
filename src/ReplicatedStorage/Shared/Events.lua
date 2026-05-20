@@ -14,7 +14,7 @@ Events.Names = {
     -- Server → Client
     ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }
     PieceLocked = "PieceLocked",   -- payload: { playerId, a, b, aRow, aCol, bRow, bCol, cells = post-gravity board snapshot }
-    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, isLocal, cells = post-chain board snapshot }
+    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, isLocal, cells = post-chain snapshot, steps = [{ popped, colors, cellsPopped = [{row, col, color}, ...] }, ...] }
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
     GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number }
     RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }

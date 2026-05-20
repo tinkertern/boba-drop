@@ -7,7 +7,13 @@ local ChainResolver = {}
 -- Returns: {
 --   chainLength = number,
 --   totalPopped = number,
---   steps = { { popped = number, colors = number }, ... } -- one entry per chain step
+--   steps = {
+--     {
+--       popped = number,                          -- cell count this step
+--       colors = number,                          -- distinct color cardinality
+--       cellsPopped = { { row, col, color }, ... } -- per-cell list for renderer targeting
+--     }, ...
+--   }
 -- }
 function ChainResolver.resolve(board)
     local steps = {}
@@ -19,8 +25,10 @@ function ChainResolver.resolve(board)
 
         local stepPopped = 0
         local seenColors = {}
+        local cellsPopped = {}
         for _, group in groups do
             for _, cell in group.cells do
+                table.insert(cellsPopped, { row = cell[1], col = cell[2], color = group.color })
                 board:clearAt(cell[1], cell[2])
                 stepPopped += 1
             end
@@ -30,7 +38,7 @@ function ChainResolver.resolve(board)
         local colorCount = 0
         for _ in seenColors do colorCount += 1 end
 
-        table.insert(steps, { popped = stepPopped, colors = colorCount })
+        table.insert(steps, { popped = stepPopped, colors = colorCount, cellsPopped = cellsPopped })
         totalPopped += stepPopped
 
         board:gravitySettle()
