@@ -15,7 +15,18 @@ function RoomManager.new()
     self._rooms = {}      -- list of { players = {p1, p2}, gameState = GameState, phase = "playing" | "postMatch" }
     self._playerRoom = {} -- playerId → room
     self._rematchVotes = {} -- room → { [playerId] = boolean }
+    self._roomReadyListeners = {} -- fired with (room) AFTER GameState exists but BEFORE startRound
     return self
+end
+
+function RoomManager:onRoomReady(fn)
+    table.insert(self._roomReadyListeners, fn)
+end
+
+function RoomManager:_fireRoomReady(room)
+    for _, fn in self._roomReadyListeners do
+        fn(room)
+    end
 end
 
 function RoomManager:enqueuePlayer(player)
@@ -43,6 +54,10 @@ function RoomManager:_startRoom(p1, p2)
     self._rematchVotes[room] = {}
     p1:SetAttribute("GameState", "in_match")
     p2:SetAttribute("GameState", "in_match")
+    -- Wire subscribers (StateSync, etc.) BEFORE startRound so the initial
+    -- onPieceSpawned events are not dropped. Prior poll-based attach (500ms)
+    -- raced with this synchronous startRound call.
+    self:_fireRoomReady(room)
     gs:startRound()
     print("[RoomManager] room started: " .. p1.Name .. " vs " .. p2.Name)
 end
@@ -92,6 +107,8 @@ function RoomManager:registerRematchVote(player, accept)
             for _, p in room.players do
                 if p and p.Parent then p:SetAttribute("GameState", "in_match") end
             end
+            -- Re-wire the new GameState's subscribers before startRound.
+            self:_fireRoomReady(room)
             room.gameState:startRound()
         end
     else

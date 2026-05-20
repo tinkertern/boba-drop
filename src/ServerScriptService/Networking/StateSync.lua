@@ -21,7 +21,9 @@ function StateSync.new(roomManager)
     self._matchEndRemote = getRemote(Events.Names.MatchEnd)
     self._pieceLockedRemote = getRemote(Events.Names.PieceLocked)
     self._activePieceRemote = getRemote(Events.Names.ActivePieceUpdate)
-    self:_attachToRooms()
+    -- Synchronous wiring: RoomManager fires onRoomReady AFTER GameState exists
+    -- but BEFORE startRound, so the first onPieceSpawned dispatch has subscribers.
+    roomManager:onRoomReady(function(room) self:wireRoom(room) end)
     return self
 end
 
@@ -108,23 +110,6 @@ function StateSync:wireRoom(room)
             self._matchEndRemote:FireClient(p, event)
         end
         self._roomManager:onMatchEnd(room)
-    end)
-end
-
-function StateSync:_attachToRooms()
-    -- Poll-style: every 0.5s scan for newly-created rooms that haven't been wired
-    -- (alternative: have RoomManager emit a roomCreated event; this is simpler for Day 3)
-    task.spawn(function()
-        local wired = {}
-        while true do
-            for _, room in self._roomManager._rooms do
-                if not wired[room] then
-                    self:wireRoom(room)
-                    wired[room] = true
-                end
-            end
-            task.wait(0.5)
-        end
     end)
 end
 
