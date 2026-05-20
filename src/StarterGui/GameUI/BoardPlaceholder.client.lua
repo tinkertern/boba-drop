@@ -72,6 +72,61 @@ grid.Parent = container
 local CELL_TONE_A = Color3.fromRGB(252, 240, 220)
 local CELL_TONE_B = Color3.fromRGB(245, 230, 208)
 
+-- Preview pearls placed during the lobby-state placeholder so the empty
+-- board reads as a game-in-progress rather than dead space. Replaced
+-- wholesale once Day 4's real renderer takes over.
+local PREVIEW_PEARLS = {
+    { row = 1, col = 1, color = "PearlBrown" },
+    { row = 1, col = 2, color = "PearlPink" },
+    { row = 1, col = 4, color = "PearlGreen" },
+    { row = 1, col = 5, color = "PearlPink" },
+    { row = 2, col = 1, color = "PearlPink" },
+    { row = 2, col = 4, color = "PearlBrown" },
+    { row = 2, col = 5, color = "PearlBrown" },
+    { row = 3, col = 4, color = "PearlGreen" },
+    { row = 3, col = 5, color = "PearlWhite" },
+}
+
+local function addPreviewPearl(cell, colorKey)
+    local p = Instance.new("Frame")
+    p.Name = "PreviewPearl"
+    p.Size = UDim2.fromScale(0.82, 0.82)
+    p.Position = UDim2.fromScale(0.5, 0.5)
+    p.AnchorPoint = Vector2.new(0.5, 0.5)
+    p.BackgroundColor3 = UIConstants.Colors[colorKey]
+    p.BorderSizePixel = 0
+    p.Parent = cell
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Pearl
+    corner.Parent = p
+
+    local pearlStroke = Instance.new("UIStroke")
+    pearlStroke.Color = UIConstants.Colors.StrokeWarm
+    pearlStroke.Thickness = 1
+    pearlStroke.Transparency = 0.45
+    pearlStroke.Parent = p
+
+    local highlight = Instance.new("Frame")
+    highlight.Name = "Highlight"
+    highlight.Size = UIConstants.Pearl.HighlightSize
+    highlight.Position = UIConstants.Pearl.HighlightPosition
+    highlight.AnchorPoint = UIConstants.Pearl.HighlightAnchor
+    highlight.BackgroundColor3 = UIConstants.Colors.PearlHighlight
+    highlight.BackgroundTransparency = UIConstants.Pearl.HighlightTransparency
+    highlight.BorderSizePixel = 0
+    highlight.Parent = p
+
+    local highlightCorner = Instance.new("UICorner")
+    highlightCorner.CornerRadius = UIConstants.Corners.Pearl
+    highlightCorner.Parent = highlight
+end
+
+local previewByPos = {}
+for _, entry in PREVIEW_PEARLS do
+    previewByPos[entry.row .. "_" .. entry.col] = entry.color
+end
+
 local function makeCell(row, col, isDanger)
     local cell = Instance.new("Frame")
     cell.Name = ("Cell_%d_%d"):format(row, col)
@@ -95,6 +150,11 @@ local function makeCell(row, col, isDanger)
     stroke.Color = UIConstants.Colors.StrokeSoft
     stroke.Transparency = 0.25
     stroke.Parent = cell
+
+    local previewKey = previewByPos[row .. "_" .. col]
+    if previewKey and not isDanger then
+        addPreviewPearl(cell, previewKey)
+    end
 end
 
 for row = 1, BOARD_TOTAL_HEIGHT do

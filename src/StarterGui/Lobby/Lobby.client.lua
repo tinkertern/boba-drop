@@ -60,8 +60,47 @@ textPadding.PaddingLeft = UDim.new(0, 18)
 textPadding.PaddingRight = UDim.new(0, 44) -- reserve space for close button
 textPadding.Parent = textWrapper
 
+-- Small color dots above the body text — telegraphs what pearls look
+-- like before the player ever sees the board.
+local dotRow = Instance.new("Frame")
+dotRow.Name = "DotRow"
+dotRow.Size = UDim2.fromOffset(78, 14)
+dotRow.Position = UDim2.fromOffset(0, 0)
+dotRow.BackgroundTransparency = 1
+dotRow.Parent = textWrapper
+
+local dotLayout = Instance.new("UIListLayout")
+dotLayout.FillDirection = Enum.FillDirection.Horizontal
+dotLayout.Padding = UDim.new(0, 6)
+dotLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+dotLayout.Parent = dotRow
+
+local function makeDot(color)
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.fromOffset(14, 14)
+    dot.BackgroundColor3 = color
+    dot.BorderSizePixel = 0
+    dot.Parent = dotRow
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = dot
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = UIConstants.Colors.StrokeWarm
+    stroke.Thickness = 0.5
+    stroke.Transparency = 0.4
+    stroke.Parent = dot
+end
+
+makeDot(UIConstants.Colors.PearlBrown)
+makeDot(UIConstants.Colors.PearlPink)
+makeDot(UIConstants.Colors.PearlGreen)
+makeDot(UIConstants.Colors.PearlWhite)
+
 local label = Instance.new("TextLabel")
-label.Size = UDim2.fromScale(1, 1)
+label.Size = UDim2.new(1, 0, 1, -20)
+label.Position = UDim2.fromOffset(0, 20)
 label.BackgroundTransparency = 1
 label.TextColor3 = UIConstants.Colors.TextDark
 label.TextWrapped = true
