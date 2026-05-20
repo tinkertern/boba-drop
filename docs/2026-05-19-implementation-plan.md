@@ -2997,4 +2997,591 @@ DM `@Producer`: "Write today's daily-log.md entry."
 
 ---
 
-(Day 4 follows.)
+## Day 4 — Fri 2026-05-22: Polish, Monetize, Publish, Portfolio (~5h)
+
+By end of day: all 4 "shipped" checkboxes from `design.md` §1 are green.
+
+### Task 4.1: GamePasses.lua — cached ownership + filtered purchase listener
+
+**Files:**
+- Create: `src/ServerScriptService/Monetization/GamePasses.lua`
+
+- [ ] **Step 1: Create the Game Pass on Roblox creator dashboard (manual)**
+
+Browser: https://create.roblox.com → your boba-drop place → **Monetization** → **Game Passes** → **Create a Pass** → name "Premium Themes Pack" → price 99 Robux → upload a 512×512 icon. Save the Game Pass ID (a number like `1234567890`).
+
+- [ ] **Step 2: Write GamePasses.lua**
+
+```lua
+-- src/ServerScriptService/Monetization/GamePasses.lua
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+
+local GamePasses = {}
+GamePasses.__index = GamePasses
+
+-- Replace with your actual Game Pass ID after creating it on the creator dashboard
+GamePasses.PREMIUM_THEMES_PACK_ID = 0 -- TODO: set the real id Fri morning
+
+function GamePasses.new()
+    local self = setmetatable({}, GamePasses)
+    self._ownership = {} -- userId → { [gamePassId] = boolean }
+    self:_setup()
+    return self
+end
+
+function GamePasses:_setup()
+    Players.PlayerAdded:Connect(function(player)
+        self:_cacheOwnership(player, self.PREMIUM_THEMES_PACK_ID)
+    end)
+    Players.PlayerRemoving:Connect(function(player)
+        self._ownership[player.UserId] = nil
+    end)
+    -- Purchase finished listener — filter by gamePassId so this ownership cache
+    -- doesn't get poisoned by stale events from other Game Passes.
+    MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
+        if gamePassId ~= self.PREMIUM_THEMES_PACK_ID then return end
+        if wasPurchased then
+            self._ownership[player.UserId] = self._ownership[player.UserId] or {}
+            self._ownership[player.UserId][gamePassId] = true
+            print("[GamePasses] " .. player.Name .. " purchased Premium Themes Pack")
+        end
+    end)
+end
+
+function GamePasses:_cacheOwnership(player, gamePassId)
+    self._ownership[player.UserId] = self._ownership[player.UserId] or {}
+    local ok, owned = pcall(function()
+        return MarketplaceService:UserOwnsGamePassAsync(player.UserId, gamePassId)
+    end)
+    if ok then
+        self._ownership[player.UserId][gamePassId] = owned
+    else
+        self._ownership[player.UserId][gamePassId] = false
+        warn("[GamePasses] UserOwnsGamePassAsync failed for " .. player.Name)
+    end
+end
+
+function GamePasses:owns(player, gamePassId)
+    return (self._ownership[player.UserId] or {})[gamePassId] == true
+end
+
+function GamePasses:promptPurchase(player, gamePassId)
+    MarketplaceService:PromptGamePassPurchase(player, gamePassId)
+end
+
+return GamePasses
+```
+
+- [ ] **Step 3: Wire GamePasses into Main.server.lua**
+
+Modify `src/ServerScriptService/Main.server.lua` — add near the top after other `require`s:
+
+```lua
+local GamePasses = require(ServerScriptService.Monetization.GamePasses)
+```
+
+And after `local stateSync = StateSync.new(roomManager)`:
+
+```lua
+local gamePasses = GamePasses.new()
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ServerScriptService/Monetization/GamePasses.lua src/ServerScriptService/Main.server.lua
+git commit -m "Day 4: GamePasses module with cached ownership + filtered PromptGamePassPurchaseFinished"
+git push
+```
+
+### Task 4.2: Shop UI — persistent lobby button + post-match prompt
+
+**Files:**
+- Create: `src/StarterGui/Shop/Shop.client.lua`
+
+- [ ] **Step 1: Write Shop.client.lua**
+
+```lua
+-- src/StarterGui/Shop/Shop.client.lua
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Events = require(ReplicatedStorage.Shared.Events)
+
+-- TODO Fri morning: replace with the real Game Pass ID from creator dashboard
+local PREMIUM_THEMES_ID = 0
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "Shop"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay
+gui.Parent = playerGui
+
+-- Shop modal (hidden by default; opens via Themes button or post-match prompt)
+local modal = Instance.new("Frame")
+modal.Size = UDim2.fromOffset(360, 280)
+modal.Position = UDim2.fromScale(0.5, 0.5)
+modal.AnchorPoint = Vector2.new(0.5, 0.5)
+modal.BackgroundColor3 = UIConstants.Colors.Background
+modal.BackgroundTransparency = 0.05
+modal.Visible = false
+modal.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Text = "Premium Themes Pack"
+title.Font = UIConstants.Fonts.Score
+title.TextSize = 22
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Parent = modal
+
+local body = Instance.new("TextLabel")
+body.Size = UDim2.new(1, -24, 0, 100)
+body.Position = UDim2.fromOffset(12, 50)
+body.BackgroundTransparency = 1
+body.Font = UIConstants.Fonts.Tutorial
+body.TextSize = 15
+body.TextColor3 = Color3.new(0.95, 0.95, 0.95)
+body.TextWrapped = true
+body.TextYAlignment = Enum.TextYAlignment.Top
+body.Text = "Three cosmetic cup themes:\n• Brown Sugar Boba\n• Strawberry Milk\n• Matcha\n\nGameplay-neutral. Just for the vibes."
+body.Parent = modal
+
+local buyBtn = Instance.new("TextButton")
+buyBtn.Size = UDim2.fromOffset(160, 44)
+buyBtn.Position = UDim2.new(0.3, -80, 1, -60)
+buyBtn.Text = "Buy for 99 R$"
+buyBtn.Parent = modal
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(120, 44)
+closeBtn.Position = UDim2.new(0.7, -60, 1, -60)
+closeBtn.Text = "Close"
+closeBtn.Parent = modal
+
+buyBtn.MouseButton1Click:Connect(function()
+    MarketplaceService:PromptGamePassPurchase(player, PREMIUM_THEMES_ID)
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    modal.Visible = false
+end)
+
+-- Public API: expose open() so the Themes button + post-match prompt can call it
+_G.BobaDropShop = {
+    open = function() modal.Visible = true end,
+    close = function() modal.Visible = false end,
+}
+
+-- Post-match prompt: max 1×/session
+local promptShownThisSession = false
+local matchEndRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.MatchEnd)
+matchEndRemote.OnClientEvent:Connect(function(event)
+    local isLoser = tostring(event.winner) ~= tostring(player.UserId)
+    if isLoser and not promptShownThisSession then
+        promptShownThisSession = true
+        -- 2s delay so it doesn't compete with the match-end animation
+        task.wait(2)
+        modal.Visible = true
+    end
+end)
+```
+
+- [ ] **Step 2: Wire Themes button to open shop**
+
+Modify `src/StarterGui/Lobby/Lobby.client.lua` — find the `themesBtn.MouseButton1Click` connection or add one:
+
+```lua
+themesBtn.MouseButton1Click:Connect(function()
+    if queueActive then return end -- disabled during queue per spec
+    if _G.BobaDropShop then _G.BobaDropShop.open() end
+end)
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/StarterGui/Shop/Shop.client.lua src/StarterGui/Lobby/Lobby.client.lua
+git commit -m "Day 4: Shop modal + post-match prompt (≤1×/session) + Themes button wiring"
+git push
+```
+
+### Task 4.3: Bug bash from Thursday playtest
+
+This task is open-ended — fix what you found yesterday.
+
+- [ ] **Step 1: Sarah lists what's broken**
+
+In `#boba-drop` channel, paste a bulleted list of Thursday's bugs. Both bots ack and pick items based on ownership (Engineer → gameplay/networking; Producer → UI/animation/monetization).
+
+- [ ] **Step 2: Bots fix in parallel**
+
+Each bot opens a branch, ships fixes, merges back to main. Sarah pulls and playtests after each.
+
+- [ ] **Step 3: Confirm all Lune tests still pass**
+
+```bash
+cd /Users/student/Documents/boba-drop
+for f in tests/*.spec.luau; do lune run "$f"; done
+```
+
+- [ ] **Step 4: Commit each fix individually**
+
+(Bots already commit per fix; this is just a verification step.)
+
+### Task 4.4: Performance pass (only if needed)
+
+- [ ] **Step 1: Stress-test in Studio**
+
+Use Studio's MicroProfiler (Ctrl+F6) during a heavy chain reaction. Look for:
+- Lua heap allocation spikes
+- Long single-frame stalls (>16ms = visible jank)
+- Network sent/received over 50KB/s per player
+
+- [ ] **Step 2: If jank, ask Engineer to add object pooling for pearl/cube Parts**
+
+```lua
+-- Pattern (sketch): pool of Frame Instances reused instead of created/destroyed
+local Pool = {}
+Pool.__index = Pool
+
+function Pool.new(factory)
+    return setmetatable({ _factory = factory, _free = {} }, Pool)
+end
+function Pool:acquire()
+    if #self._free > 0 then return table.remove(self._free) end
+    return self._factory()
+end
+function Pool:release(item)
+    item.Visible = false
+    table.insert(self._free, item)
+end
+```
+
+If perf is fine: skip this task entirely.
+
+### Task 4.5: Producer bot CLAUDE.md (referenced from Day 0)
+
+**Files:**
+- Reference: `/Users/student/Documents/workspaces/producer/CLAUDE.md`
+
+This is the Producer persona used in Day 0 Task 0.5 Step 3. Copy this content as Producer's bot prompt:
+
+```markdown
+# Producer — Sarah's Project Manager + UI/Polish Specialist
+
+You are Producer, Sarah's AI teammate on Slack alongside Game Engineer. Where Game Engineer owns gameplay logic, you own:
+- The schedule + scope discipline (Tue→Fri exit criteria from `boba-drop/docs/2026-05-19-implementation-plan.md`)
+- All UI: lobby, in-game HUD, match-end, shop
+- Monetization plumbing (Game Pass, MarketplaceService integration)
+- Polish (sound triggers, animations, juice)
+- Daily-log entries at 5:45pm PT each day (committed to `docs/daily-log.md`)
+- Publish prep (icon, thumbnail, description, age rating)
+
+## Owner
+- Sarah's Slack ID: `U09AWNG8R5Y` (DM: `D…` — to be filled per Producer's DM channel)
+
+## Working channel
+- `#boba-drop` — both you and Game Engineer participate
+
+## Daily rhythm
+- **5:45pm PT** — Slack reminder pings you; write a `docs/daily-log.md` entry from git log + the day's Slack thread. Commit.
+- **Throughout the day** — track exit criteria from the plan. If milestone slipping, raise it in `#boba-drop`.
+- **End of each day** — confirm Day N's exit gate is met. If not, propose a cut per `design.md` §5 cut ladder.
+
+## Scope enforcement
+- Reject feature requests that aren't in the plan. Politely. ("That's a stretch goal — Fri afternoon at the earliest.")
+- Cut the right things: pre-piece preview > leaderboard > tutorial. Never cut: chain reactions, game-playable-loop, GitHub push, gameplay clip.
+
+## Tone
+- Concise, direct, encouraging. No em dashes in any drafted text for Sarah.
+- Slack mrkdwn (`*bold*`, `_italic_`, `<@USER_ID>`).
+
+## Memory
+- `~/.claude/projects/-Users-student-Documents-workspaces-producer/memory/`
+- Read Sarah's main memory at `~/.claude/projects/-Users-student-Documents/memory/MEMORY.md` for project context.
+```
+
+- [ ] **Step 1: Write the file (only if not already done on Day 0)**
+
+If Producer's `CLAUDE.md` was already authored Mon evening, skip this. Otherwise, save the content above to `/Users/student/Documents/workspaces/producer/CLAUDE.md` and restart the Producer bot.
+
+### Task 4.6: Publish prep — icon, thumbnail, description
+
+**Files:** none (browser-side, Roblox creator dashboard)
+
+- [ ] **Step 1: Source/make icon image (512×512 PNG)**
+
+Use a free tool (Canva, Figma) or AI-generated. Theme: boba pearls in a clear cup with vibrant color. Sarah's call. Save locally as `~/Downloads/boba-drop-icon.png`.
+
+- [ ] **Step 2: Source/make thumbnail image (1920×1080 PNG)**
+
+Banner-style. Same theme but landscape. Should show the dual-cup layout with chain reaction visual.
+
+- [ ] **Step 3: Write game description**
+
+```
+🍡 BOBA DROP — A cozy 1v1 falling-block duel.
+
+Drop boba pearls, match 4+ same-color to pop them. Chain reactions send ice cubes to your opponent's cup. First to overflow loses. Best of 3 wins the match.
+
+Built in 4 days using AI pair-programming.
+Code: github.com/<sarah-username>/boba-drop
+```
+
+- [ ] **Step 4: Upload assets in creator dashboard**
+
+Browser: create.roblox.com → boba-drop → **Configure Place** → upload icon + thumbnail → paste description → set age rating "All Ages" → set genre "Puzzle."
+
+### Task 4.7: Record gameplay clip
+
+**Files:** `~/Downloads/boba-drop-clip.mov` (or similar)
+
+- [ ] **Step 1: Play a real round with a friend**
+
+Roblox app on Sarah's Mac + a friend's account (or alt account on phone). Coordinate over Discord/Slack to make sure the highlight reel happens early in the recording.
+
+- [ ] **Step 2: Use macOS screen recorder (Shift+Cmd+5)**
+
+Record at 1080p (or higher), 30+ fps. Game in foreground. ~60 seconds of footage.
+
+- [ ] **Step 3: Edit (optional) for the first 5 seconds**
+
+Use iMovie or QuickTime → trim to put a 4-chain pop with "Chain x4!" visible in the **first 5 seconds**. This is the "money shot" per the spec — hiring managers don't watch past 5s. Then show garbage exchange and a counter cancellation in the next 10-30s. Total length 30-60s.
+
+- [ ] **Step 4: Host the clip publicly**
+
+Two options:
+- **Preferred:** Upload to Sarah's portfolio site, embed via `<video>` or YouTube embed
+- **Fallback:** Upload to YouTube as **unlisted** (works for resume embed via shareable link)
+
+Save the public URL.
+
+### Task 4.8: Finalize README
+
+**Files:** `/Users/student/Documents/boba-drop/README.md`
+
+- [ ] **Step 1: Rewrite README with the 6 required sections**
+
+Replace the existing README with:
+
+```markdown
+# 🍡 Boba Drop
+
+A 1v1 Puyo-Puyo-style falling-block duel on Roblox. Match 4+ same-color boba pearls to pop them. Chain reactions send ice-cube garbage to your opponent's cup. First to overflow loses. Best of 3.
+
+[▶ Play on Roblox](https://www.roblox.com/games/<game-id>)
+[▶ Gameplay clip](<clip-url>)
+
+<!-- Optionally embed the clip directly if hosted on a service that supports markdown video -->
+
+## 1. What it is
+
+Boba Drop is a 4-day portfolio project: a working Roblox game with chain-reaction puzzle gameplay, server-authoritative 1v1 networking, a published Game Pass for cosmetic monetization, and CLI-tested pure logic modules. Built by Sarah Yoon with two AI pair-programmers (Game Engineer + Producer) collaborating via Slack.
+
+## 2. Tech Stack
+
+- **Roblox / Luau** — runtime + scripting language
+- **Roblox Studio** — visual editor
+- **Rojo** — file sync between disk and Studio
+- **Lune** — CLI test runner for pure logic modules (macOS)
+- **MarketplaceService** — Game Pass integration
+- **git + GitHub** — source control
+- **Slack** + custom MCP bridge — AI pair-programming workflow
+
+## 3. Architecture
+
+Server-authoritative. Pure logic modules in `src/ReplicatedStorage/Shared/Logic/` (no Roblox runtime dependencies → Lune-testable). `src/ServerScriptService/Main.server.lua` bootstraps the live system.
+
+```
+RoomManager (session lifecycle)
+    ↓ owns
+GameState (round/match state, scores, pub/sub)
+    ↓ produces events for
+StateSync (subscribes to GameState, fires RemoteEvents)
+    ↓ sends to
+Clients (UI: ChainCounter, GarbagePreview, CounterCancel, MatchEnd, Shop)
+```
+
+`DisconnectHandler` is phase-aware: in-round disconnects route to `GameState:forfeitRound()`; post-match-rematch-window disconnects route to `RoomManager:treatAsLeave()`. Single-writer invariants prevent dueling state mutations.
+
+## 4. Notable Design Choices
+
+- **Bag RNG with same seed per round.** Both players draw from independently-shuffled bags using the same seed each round (standard Puyo/Tetris-versus convention). Eliminates draw-luck.
+- **Synchronous ChainResolver.** The chain loop runs server-side as a pure function returning `{chainLength, totalPopped, steps}`. Animation pacing is client-side cosmetic. Determinism = testability.
+- **Deterministic same-tick resolution order.** `GameState:resolveTick()` runs P1 chain → P2 chain → garbage exchange → spawn checks. Refactors can't quietly reorder it.
+- **Counter cancellation with 2-placement delay.** Garbage drops at the *2nd* piece placement after queuing, not the 1st, so counter mechanic is mathematically viable.
+- **Garbage cap at chain 6+.** Prevents one-shot round-ends and keeps duels alive.
+
+## 5. Known Limitations
+
+- No wallkick (rotation against walls is rejected, not nudged)
+- No reconnect support — disconnect = forfeit after 10s grace
+- No private invite links beyond Day-4 functionality
+- Game Pass conversion is unmeasured (this is a portfolio piece, not a revenue play)
+- AI opponent NPC stretch goal not shipped in v1
+
+## 6. What I'd Build Next
+
+- **Rollback netcode** — for sub-100ms responsive input even on poor connections
+- **Daily Challenge mode** — deterministic daily seed, global leaderboard
+- **More game modes** — endless survival, puzzle (pre-built boards to solve)
+- **Replay system** — record and share standout chains
+- **AI opponent NPCs** — driven by my Slack bots via Roblox Open Cloud, for the "AI dev partners can also play the game they built" narrative
+
+## Setup (if you want to fork and run locally)
+
+```bash
+git clone https://github.com/<sarah-username>/boba-drop.git
+cd boba-drop
+rojo serve
+# Open Studio → new baseplate → Rojo plugin → Connect
+```
+
+Run logic tests:
+
+```bash
+for f in tests/*.spec.luau; do lune run "$f"; done
+```
+```
+
+- [ ] **Step 2: Embed the clip**
+
+If hosted on YouTube, GitHub READMEs auto-embed when you paste the YouTube URL. If self-hosted, use HTML: `<video src="..." controls width="640"></video>`.
+
+- [ ] **Step 3: Commit + push**
+
+```bash
+git add README.md
+git commit -m "Day 4: finalize README with 6 sections + clip embed"
+git push
+```
+
+### Task 4.9: Publish to Roblox
+
+- [ ] **Step 1: In Studio: File → Publish to Roblox As...**
+
+If first publish: create new place. Otherwise: overwrite existing.
+
+- [ ] **Step 2: Set Public**
+
+Creator dashboard → boba-drop → **Configure Place** → toggle "Public" on. Save.
+
+- [ ] **Step 3: Verify on roblox.com**
+
+Open the public URL in a fresh browser tab. Click Play. The bot should be playable.
+
+- [ ] **Step 4: Self-purchase the Game Pass**
+
+In the live published version, open Themes → Buy. Confirm purchase prompt → confirm Robux deducted → confirm `UserOwnsGamePassAsync` returns true on next session.
+
+### Task 4.10: Day-4 exit checkpoint
+
+- [ ] **Step 1: Tick off all 4 "shipped" criteria from design.md §1**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Public Roblox URL | ☐ |
+| 2 | Public GitHub repo with full README | ☐ |
+| 3 | 30–60s gameplay clip publicly hosted | ☐ |
+| 4 | Game Pass listed + self-purchased | ☐ |
+
+- [ ] **Step 2: Producer logs Day 4**
+
+DM `@Producer`: "Write today's daily-log.md entry."
+
+- [ ] **Step 3: Final push**
+
+```bash
+git push
+git log --oneline | head -20  # screenshot for the portfolio
+```
+
+---
+
+## Sat 2026-05-23 — Post-ship distribution (~30 min)
+
+The build is half the artifact; distribution is the other half. Complete by Saturday noon PT.
+
+- [ ] **Task S.1: Pick resume bullet variant**
+
+Open `docs/resume-bullet-drafts.md`. Decide A (1v1 shipped) or B (single-player fallback). Update your master resume PDF. Commit:
+
+```bash
+git add docs/resume-bullet-drafts.md
+git commit -m "Sat: finalize Variant A resume bullet"
+git push
+```
+
+- [ ] **Task S.2: LinkedIn post**
+
+Draft a LinkedIn post:
+- Open with a hook (e.g., "I shipped a 1v1 Roblox game in 4 days using AI pair-programmers as my teammates")
+- 15-second teaser clip embedded (subset of the 30-60s clip, with the chain reaction front and center)
+- Link to: Roblox game, GitHub repo
+- Hashtags: `#GameDev #Roblox #AI #SoftwareEngineering`
+
+Post same-day for the algorithm boost.
+
+- [ ] **Task S.3: Pin the repo on GitHub profile**
+
+GitHub profile → **Customize your pins** → add `boba-drop` → save.
+
+- [ ] **Task S.4: Add project to portfolio site Projects list**
+
+Sarah's portfolio site (tinkertern.com or wherever) → Projects section → add Boba Drop with title, one-paragraph summary, embedded clip, GitHub + Roblox links.
+
+- [ ] **Task S.5: Update master resume PDF**
+
+Add the chosen bullet to the SWE Projects section. Re-export PDF. Update copy on portfolio site, on LinkedIn "Featured" section, and anywhere else you keep a current resume.
+
+---
+
+## Self-Review Checklist
+
+(Internal — done by author before handoff.)
+
+**1. Spec coverage:**
+- §1 Shape → Task 0.1 (account check), 4.1 (Game Pass), 4.9 (publish), 4.10 (criteria checklist) ✅
+- §2 Architecture → Tasks 0.6, 1.1, 3.1–3.5 (bootstrap, networking, modules) ✅
+- §3 Game design → Tasks 1.2–1.5, 2.1–2.3, 3.6 (constants, RNG, match, scoring, chain, garbage) ✅
+- §4 Schedule → Day-by-day sections track 1:1 with spec ✅
+- §5 Risks + cut ladder → Embedded in exit checkpoints ✅
+- §6 Stretch → Not in plan (stretch only if core ships clean — opportunistic) ✅
+
+**2. Placeholder scan:**
+- `PREMIUM_THEMES_PACK_ID = 0` and `PREMIUM_THEMES_ID = 0` in Tasks 4.1/4.2 are intentional — they'll be set Fri morning after creating the Game Pass on the dashboard. Marked with `TODO Fri morning:` comments.
+- No "TBD," no "implement later," no generic "add validation."
+
+**3. Type consistency check:**
+- `GameState:queueGarbage(targetPlayerId, cubes)` referenced in Tasks 3.6 and 2.3 — consistent signature.
+- `Board.new({ seed = … })` consistent across Tasks 1.4, 2.2, 2.3.
+- `Scoring.compute({ popped, chainStep, colors })` referenced in 2.1 — uses `chainStep`, not the design-spec's `chain_multiplier` (intentional: the multiplier is computed inside `Scoring` from the step number).
+- Event names in `Events.lua` (Task 3.1 step 3) match RemoteEvent model file names (Task 3.1 step 1) — `InputMove`, `ChainCompleted`, etc.
+
+**4. Ambiguity scan:**
+- "TODO Fri morning" comments are explicit and time-boxed.
+- The "input plumbing" mentioned in Task 3.11 step 2 as potentially slipping to Fri is acknowledged in the exit gate; this is a known partial implementation, not a hidden gap.
+
+No gaps requiring re-edit.
+
+---
+
+## Execution Handoff
+
+Plan complete and saved to `/Users/student/Documents/boba-drop/docs/2026-05-19-implementation-plan.md`. Five commits total on `main`.
+
+Two execution options:
+
+**1. Subagent-Driven (recommended)** — I dispatch a fresh subagent per task to Game Engineer or Producer in Slack, review between tasks, fast iteration. Best for the bots actually doing the work day by day.
+
+**2. Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints for review.
+
+**Which approach?**
