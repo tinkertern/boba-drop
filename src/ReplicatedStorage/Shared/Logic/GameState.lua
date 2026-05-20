@@ -261,6 +261,9 @@ function GameState:applyInput(playerId, input)
     elseif input.type == "hardDrop" then
         local dist = self:_dropDistance(playerId, piece)
         piece.pivotRow -= dist
+        -- Surface the slammed-down position so the renderer can paint the
+        -- piece at its final cell before the lock event replaces it with cells.
+        self:_dispatch("onPieceMoved", { playerId = playerId, piece = piece })
         self:_lockPiece(playerId)
     elseif input.type == "tick" then
         -- Gravity step (server-driven). Same effect as a single soft-drop step.
@@ -279,6 +282,22 @@ function GameState:applyInput(playerId, input)
     end
 end
 
+function GameState:_boardSnapshot(playerId)
+    -- Deep copy of cells[row][col] = colorName | nil. Producer's renderer
+    -- consumes this on PieceLocked and ChainCompleted to paint declaratively
+    -- without maintaining a shadow grid.
+    local board = self._boards[playerId]
+    if not board then return nil end
+    local snap = {}
+    for r = 1, board.height do
+        snap[r] = {}
+        for c = 1, board.width do
+            snap[r][c] = board.cells[r][c]
+        end
+    end
+    return snap
+end
+
 function GameState:_lockPiece(playerId)
     local piece = self._activePieces[playerId]
     if not piece then return end
@@ -294,17 +313,19 @@ function GameState:_lockPiece(playerId)
         board:placeAt(bPos[1], bPos[2], piece.b)
     end
 
+    self._activePieces[playerId] = nil
+
+    -- Settle in case of partial overhangs (b above ceiling, a inside).
+    -- Dispatch AFTER settle so renderer's snapshot reflects final cell positions.
+    board:gravitySettle()
+
     self:_dispatch("onPieceLocked", {
         playerId = playerId,
         a = piece.a, b = piece.b,
         aRow = aPos[1], aCol = aPos[2],
         bRow = bPos[1], bCol = bPos[2],
+        cells = self:_boardSnapshot(playerId),
     })
-
-    self._activePieces[playerId] = nil
-
-    -- Settle in case of partial overhangs (b above ceiling, a inside).
-    board:gravitySettle()
 
     -- Run chain
     local result = ChainResolver.resolve(board)
@@ -328,6 +349,7 @@ function GameState:_lockPiece(playerId)
             totalPopped = result.totalPopped,
             scoreAdded = scoreAdded,
             steps = result.steps,
+            cells = self:_boardSnapshot(playerId),
         })
 
         -- Convert chain length to outgoing garbage and route through counter logic

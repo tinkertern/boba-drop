@@ -12,8 +12,9 @@ Events.Names = {
     LeaveMatch = "LeaveMatch",     -- payload: {}
 
     -- Server → Client
-    PieceLocked = "PieceLocked",   -- payload: { playerId, position = {row, col}, color = string }
-    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, isLocal }
+    ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }
+    PieceLocked = "PieceLocked",   -- payload: { playerId, a, b, aRow, aCol, bRow, bCol, cells = post-gravity board snapshot }
+    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, isLocal, cells = post-chain board snapshot }
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
     GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number }
     RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }
