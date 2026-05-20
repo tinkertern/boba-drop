@@ -27,8 +27,16 @@ label.Visible = false
 label.Parent = screenGui
 
 -- ChainCompleted RemoteEvent is created in Day 3 networking work.
--- WaitForChild blocks safely until then.
-local chainRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.ChainCompleted)
+-- Use timeouts so the WaitForChild does not warn (or block forever)
+-- when the Remotes folder doesn't exist yet.
+local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+if not remotes then
+    return
+end
+local chainRemote = remotes:WaitForChild(Events.Names.ChainCompleted, 30)
+if not chainRemote then
+    return
+end
 
 local hideTask = nil
 chainRemote.OnClientEvent:Connect(function(payload)

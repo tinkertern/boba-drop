@@ -56,9 +56,17 @@ local function render()
     labelValue.Text = tostring(score)
 end
 
-local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local chainRemote = remotes:WaitForChild(Events.Names.ChainCompleted)
-local roundEndRemote = remotes:WaitForChild(Events.Names.RoundEnd)
+-- Day 3 wires up Remotes; use timeouts so we don't warn when the folder
+-- doesn't exist yet.
+local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+if not remotes then
+    return
+end
+local chainRemote = remotes:WaitForChild(Events.Names.ChainCompleted, 30)
+local roundEndRemote = remotes:WaitForChild(Events.Names.RoundEnd, 30)
+if not (chainRemote and roundEndRemote) then
+    return
+end
 
 chainRemote.OnClientEvent:Connect(function(payload)
     if not payload.isLocal then return end
