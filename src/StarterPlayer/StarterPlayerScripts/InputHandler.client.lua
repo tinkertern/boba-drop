@@ -4,14 +4,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Events = require(ReplicatedStorage.Shared.Events)
 
-local function getRemote(name)
-    return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(name)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+if not Remotes then
+    warn("InputHandler: Remotes folder absent (expected pre-Day-3); idle")
+    return
 end
 
-local moveRemote = getRemote(Events.Names.InputMove)
-local rotateRemote = getRemote(Events.Names.InputRotate)
-local softDropRemote = getRemote(Events.Names.InputSoftDrop)
-local hardDropRemote = getRemote(Events.Names.InputHardDrop)
+local moveRemote = Remotes:WaitForChild(Events.Names.InputMove, 30)
+local rotateRemote = Remotes:WaitForChild(Events.Names.InputRotate, 30)
+local softDropRemote = Remotes:WaitForChild(Events.Names.InputSoftDrop, 30)
+local hardDropRemote = Remotes:WaitForChild(Events.Names.InputHardDrop, 30)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end

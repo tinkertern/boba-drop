@@ -11,6 +11,12 @@ if not UserInputService.TouchEnabled then
     return
 end
 
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+if not Remotes then
+    warn("TouchControls: Remotes folder absent (expected pre-Day-3); idle")
+    return
+end
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -52,13 +58,9 @@ rotateCcw.Position = UDim2.new(1, -2 * SIZE - 80, 1, -SIZE - 20)
 rotateCw.Position  = UDim2.new(1, -SIZE - 70, 1, -SIZE - 20)
 hardBtn.Position   = UDim2.new(0.45, -SIZE / 2, 1, -SIZE - 20)
 
-local function getRemote(name)
-    return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(name)
-end
-
-local moveRemote     = getRemote(Events.Names.InputMove)
-local rotateRemote   = getRemote(Events.Names.InputRotate)
-local hardDropRemote = getRemote(Events.Names.InputHardDrop)
+local moveRemote     = Remotes:WaitForChild(Events.Names.InputMove, 30)
+local rotateRemote   = Remotes:WaitForChild(Events.Names.InputRotate, 30)
+local hardDropRemote = Remotes:WaitForChild(Events.Names.InputHardDrop, 30)
 
 leftBtn.MouseButton1Click:Connect(function() moveRemote:FireServer({ direction = "left" }) end)
 rightBtn.MouseButton1Click:Connect(function() moveRemote:FireServer({ direction = "right" }) end)
