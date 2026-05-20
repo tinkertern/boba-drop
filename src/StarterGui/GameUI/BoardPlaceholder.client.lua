@@ -1,15 +1,17 @@
 -- BoardRenderer (file still named BoardPlaceholder for Rojo continuity).
 --
 -- Renders the local player's board in response to server-fired events:
---   PieceLocked       : paints the two pearls of a just-locked piece
---   ActivePieceUpdate : paints the currently-falling pair (Engineer wiring in
---                       parallel; subscribed defensively so this script works
---                       before and after that event lands)
---   ChainCompleted    : TODO needs a board-snapshot payload to repaint
---                       declaratively after pops + gravity settle. Until then,
---                       the next PieceLocked event will overwrite stale cells
---                       where new pieces land.
---   RoundEnd          : wipes the board for the next round
+--   PieceLocked       : repaints locked pearls from the post-settle cells
+--                       snapshot in the payload. Also clears any active
+--                       overlay since the falling pair just became locked.
+--   ActivePieceUpdate : paints the currently-falling pair at the pivot +
+--                       partner-offset position. Active pearls are visually
+--                       distinct from locked (heavier stroke).
+--   ChainCompleted    : repaints from the post-chain cells snapshot, so any
+--                       popped cells disappear and gravity-settled positions
+--                       are reflected. Score / chain HUD are handled by their
+--                       own scripts.
+--   RoundEnd          : wipes the board for the next round.
 --
 -- The board is 6 columns wide x 14 rows tall (12 visible + 2 danger). Game
 -- coordinates: row 1 is the cup floor, row 14 is the cup ceiling. The original
@@ -218,6 +220,32 @@ local function clearAll()
     end
 end
 
+-- Declarative repaint from a server-sent cells snapshot. cells is a 2D table
+-- where cells[row][col] is either a color name ("Brown"/"Pink"/...) or nil.
+-- Leaves active pearls alone (those are repainted by ActivePieceUpdate). Used
+-- by PieceLocked and ChainCompleted, both of which carry the post-event grid.
+local function paintFromSnapshot(cells)
+    if type(cells) ~= "table" then return end
+    for row = 1, BOARD_TOTAL_HEIGHT do
+        local rowTable = cells[row]
+        for col = 1, BOARD_WIDTH do
+            local key = posKey(row, col)
+            local existing = pearlByPos[key]
+            local snapshotColor = rowTable and rowTable[col]
+            if existing and existing.kind == "active" then
+                -- active pearls are owned by ActivePieceUpdate; don't touch
+            elseif snapshotColor then
+                if existing and existing.pearl then existing.pearl:Destroy() end
+                local pearl = buildPearl(cellsByPos[key], colorForServerName(snapshotColor), false)
+                pearlByPos[key] = { pearl = pearl, kind = "locked" }
+            else
+                if existing and existing.pearl then existing.pearl:Destroy() end
+                pearlByPos[key] = nil
+            end
+        end
+    end
+end
+
 -- Partner-offset mirrors GameState.partnerOffset so the client can paint both
 -- pearls of an active piece from {anchorRow, anchorCol, orientation, colors}.
 -- 0: partner above (dr=+1, dc=0), 1: partner right (0,+1), 2: below (-1,0),
@@ -236,40 +264,56 @@ if not Remotes then
     return
 end
 
+local function isLocalEvent(event)
+    if event == nil then return false end
+    if event.isLocal ~= nil then return event.isLocal end
+    return tostring(event.playerId) == localUserId
+end
+
 local pieceLockedRemote = Remotes:WaitForChild("PieceLocked", 10)
 if pieceLockedRemote then
     pieceLockedRemote.OnClientEvent:Connect(function(event)
-        if tostring(event.playerId) ~= localUserId then return end
-        clearPearl(event.aRow, event.aCol)
-        clearPearl(event.bRow, event.bCol)
-        paintPearl(event.aRow, event.aCol, event.a, "locked")
-        paintPearl(event.bRow, event.bCol, event.b, "locked")
+        if not isLocalEvent(event) then return end
+        -- The just-locked pair stops being "active". Clear any active overlay
+        -- then repaint locked state from the post-settle snapshot.
+        clearActivePearls()
+        if event.cells then
+            paintFromSnapshot(event.cells)
+        else
+            -- Pre-snapshot fallback: paint the two locked cells individually.
+            paintPearl(event.aRow, event.aCol, event.a, "locked")
+            paintPearl(event.bRow, event.bCol, event.b, "locked")
+        end
     end)
 end
 
--- ActivePieceUpdate is being added by Engineer in parallel. Hook defensively
--- so this script works both before and after that remote ships.
-local function tryHookActivePiece()
-    local remote = Remotes:FindFirstChild("ActivePieceUpdate")
-    if not remote then return end
-    remote.OnClientEvent:Connect(function(event)
-        if tostring(event.playerId) ~= localUserId then return end
+local activePieceRemote = Remotes:WaitForChild("ActivePieceUpdate", 10)
+if activePieceRemote then
+    activePieceRemote.OnClientEvent:Connect(function(event)
+        if not isLocalEvent(event) then return end
         clearActivePearls()
-        local anchorRow = event.position and event.position.anchorRow or event.anchorRow
-        local anchorCol = event.position and event.position.anchorCol or event.anchorCol
+        local pivotRow = event.pivotRow
+        local pivotCol = event.pivotCol
         local orientation = event.orientation or 0
-        if not anchorRow or not anchorCol then return end
+        if not pivotRow or not pivotCol then return end
         local dr, dc = partnerOffset(orientation)
-        local aColor = (event.colors and event.colors.pearlA) or event.a
-        local bColor = (event.colors and event.colors.pearlB) or event.b
-        if aColor then paintPearl(anchorRow, anchorCol, aColor, "active") end
-        if bColor then paintPearl(anchorRow + dr, anchorCol + dc, bColor, "active") end
+        local aColor = event.colors and event.colors.a
+        local bColor = event.colors and event.colors.b
+        if aColor then paintPearl(pivotRow, pivotCol, aColor, "active") end
+        if bColor then paintPearl(pivotRow + dr, pivotCol + dc, bColor, "active") end
     end)
 end
-tryHookActivePiece()
-Remotes.ChildAdded:Connect(function(child)
-    if child.Name == "ActivePieceUpdate" then tryHookActivePiece() end
-end)
+
+local chainCompletedRemote = Remotes:WaitForChild("ChainCompleted", 10)
+if chainCompletedRemote then
+    chainCompletedRemote.OnClientEvent:Connect(function(event)
+        if not isLocalEvent(event) then return end
+        if event.cells then
+            paintFromSnapshot(event.cells)
+        end
+        -- Chain HUD + score are handled by ChainCounter / ScoreDisplay scripts.
+    end)
+end
 
 local roundEndRemote = Remotes:WaitForChild("RoundEnd", 10)
 if roundEndRemote then
@@ -277,10 +321,3 @@ if roundEndRemote then
         clearAll()
     end)
 end
-
--- TODO: ChainCompleted needs a popped-cells list or a board snapshot in its
--- payload to repaint declaratively after pops + gravity settle. Pending the
--- contract update from Engineer. Until then, chains leave their pre-pop pearls
--- visible; subsequent PieceLocked events overwrite the cells where new pieces
--- land, but mid-chain pops will linger as ghost pearls. The score + chain HUD
--- reflect the chain landing even though the board renderer is stale.
