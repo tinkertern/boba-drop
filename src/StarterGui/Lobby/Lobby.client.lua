@@ -1,14 +1,18 @@
--- Day 1: tutorial card with DataStore-persisted dismiss.
+-- Day 1: tutorial card. Dismiss state lives on the server (DataStore);
+-- client reads it via Player attribute "TutorialDismissed" and requests a
+-- dismiss by firing the DismissTutorial RemoteEvent.
 -- Day 3 will extend this file with queue UI + themes button.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local DataStoreService = game:GetService("DataStoreService")
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 
+local ATTRIBUTE = "TutorialDismissed"
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local dismissRemote = ReplicatedStorage:WaitForChild("DismissTutorial")
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "Lobby"
@@ -43,26 +47,22 @@ closeBtn.Text = "X"
 closeBtn.BackgroundTransparency = 0.4
 closeBtn.Parent = card
 
-local ds = DataStoreService:GetDataStore("BobaDrop_TutorialDismissed")
-local key = "u" .. tostring(player.UserId)
-
-local function dismiss()
-    card.Visible = false
-    pcall(function() ds:SetAsync(key, true) end)
+local function applyVisibility()
+    card.Visible = not player:GetAttribute(ATTRIBUTE)
 end
 
-local dismissed = false
-pcall(function()
-    dismissed = ds:GetAsync(key) == true
-end)
-if dismissed then
+local function requestDismiss()
     card.Visible = false
+    dismissRemote:FireServer()
 end
 
-closeBtn.MouseButton1Click:Connect(dismiss)
+applyVisibility()
+player:GetAttributeChangedSignal(ATTRIBUTE):Connect(applyVisibility)
+
+closeBtn.MouseButton1Click:Connect(requestDismiss)
 card.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-        dismiss()
+        requestDismiss()
     end
 end)
