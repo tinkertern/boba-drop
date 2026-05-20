@@ -19,6 +19,7 @@ function StateSync.new(roomManager)
     self._garbageAppliedRemote = getRemote(Events.Names.GarbageApplied)
     self._roundEndRemote = getRemote(Events.Names.RoundEnd)
     self._matchEndRemote = getRemote(Events.Names.MatchEnd)
+    self._pieceLockedRemote = getRemote(Events.Names.PieceLocked)
     self:_attachToRooms()
     return self
 end
@@ -42,8 +43,15 @@ function StateSync:wireRoom(room)
                 playerId = event.playerId,
                 chainLength = event.chainLength,
                 totalPopped = event.totalPopped,
+                scoreAdded = event.scoreAdded,
                 isLocal = (tostring(p.UserId) == event.playerId),
             })
+        end
+    end)
+    gs:subscribe("onPieceLocked", function(event)
+        if not self._pieceLockedRemote then return end
+        for _, p in room.players do
+            self._pieceLockedRemote:FireClient(p, event)
         end
     end)
     gs:subscribe("onGarbageIncoming", function(event)
