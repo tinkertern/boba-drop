@@ -1260,4 +1260,644 @@ In `#boba-drop`, DM `@Producer`: "Write today's daily-log.md entry from git log 
 
 ---
 
-(Days 2–4 follow in subsequent sections of this document — see "Day 2", "Day 3", "Day 4" below. Same structure: TDD where applicable, full code in every step, exact commands, commit at the end of each task.)
+## Day 2 — Wed 2026-05-20: Chains + Animation Pacing (~7h, boss fight) ⚠️
+
+By end of day: chain reactions work end-to-end, scoring is correct, GameState owns round/match state with pub/sub. Lune tests pass 15+ scenarios. The boss fight: get the chain logic deterministic and bulletproof.
+
+### Task 2.1: Scoring.lua — pure formula
+
+**Files:**
+- Create: `src/ReplicatedStorage/Shared/Logic/Scoring.lua`
+- Create: `tests/Scoring.spec.luau`
+
+- [ ] **Step 1: Write the failing test**
+
+```lua
+-- tests/Scoring.spec.luau
+local t = require("./_test_helpers")
+local Scoring = require("../src/ReplicatedStorage/Shared/Logic/Scoring")
+
+t.describe("Scoring", function()
+    t.it("4 popped, 1-chain, 1-color = 4 × 1 × 1 = 4", function()
+        t.assertEq(Scoring.compute({ popped = 4, chainStep = 1, colors = 1 }), 4)
+    end)
+
+    t.it("4 popped, 2-chain, 1-color = 4 × 3 × 1 = 12", function()
+        t.assertEq(Scoring.compute({ popped = 4, chainStep = 2, colors = 1 }), 12)
+    end)
+
+    t.it("8 popped, 3-chain, 2-colors = 8 × 6 × 2 = 96", function()
+        t.assertEq(Scoring.compute({ popped = 8, chainStep = 3, colors = 2 }), 96)
+    end)
+
+    t.it("12 popped, 5-chain, 4-colors = 12 × 24 × 8 = 2304", function()
+        t.assertEq(Scoring.compute({ popped = 12, chainStep = 5, colors = 4 }), 2304)
+    end)
+
+    t.it("chain step beyond table caps multiplier at doubled last entry", function()
+        -- 8-chain → 96 × 2 × 2 = 384 (doubling rule)
+        local step = 8
+        local expectedMult = 96 * (2 ^ (step - 7)) -- 96 = chain 7
+        t.assertEq(Scoring.compute({ popped = 1, chainStep = step, colors = 1 }), expectedMult)
+    end)
+end)
+
+t.summary()
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+```bash
+lune run tests/Scoring.spec.luau
+```
+
+Expected: error about `Scoring` not found.
+
+- [ ] **Step 3: Implement Scoring.lua**
+
+```lua
+-- src/ReplicatedStorage/Shared/Logic/Scoring.lua
+local Constants = require("../Logic/Constants")
+
+local Scoring = {}
+
+local function chainMultiplier(step)
+    local table = Constants.CHAIN_MULTIPLIER
+    if step <= #table then return table[step] end
+    -- beyond the table: doubling rule
+    local last = table[#table]
+    return last * (2 ^ (step - #table))
+end
+
+local function colorBonus(distinctColors)
+    local table = Constants.COLOR_BONUS
+    if distinctColors <= #table then return table[distinctColors] end
+    return table[#table]
+end
+
+function Scoring.compute(event)
+    -- event: { popped = int, chainStep = int >=1, colors = int >=1 }
+    assert(event.popped and event.chainStep and event.colors, "Scoring.compute: invalid event")
+    return event.popped * chainMultiplier(event.chainStep) * colorBonus(event.colors)
+end
+
+return Scoring
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+```bash
+lune run tests/Scoring.spec.luau
+```
+
+Expected: `5/5 passed (0 failed)`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ReplicatedStorage/Shared/Logic/Scoring.lua tests/Scoring.spec.luau
+git commit -m "Day 2: Scoring pure formula module + tests"
+git push
+```
+
+### Task 2.2: ChainResolver.lua — synchronous pop → gravity → match loop
+
+**Files:**
+- Create: `src/ReplicatedStorage/Shared/Logic/ChainResolver.lua`
+- Create: `tests/ChainResolver.spec.luau`
+
+- [ ] **Step 1: Write the failing test (covers single pop, chain reaction, multi-color in one step, bottom-row chain, empty-field result, no-match)**
+
+```lua
+-- tests/ChainResolver.spec.luau
+local t = require("./_test_helpers")
+local Board = require("../src/ReplicatedStorage/Shared/Logic/Board")
+local ChainResolver = require("../src/ReplicatedStorage/Shared/Logic/ChainResolver")
+
+local function newBoard() return Board.new({ seed = 1 }) end
+
+t.describe("ChainResolver", function()
+    t.it("returns zero on an empty board", function()
+        local b = newBoard()
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 0)
+        t.assertEq(result.totalPopped, 0)
+        t.assertEq(#result.steps, 0)
+    end)
+
+    t.it("returns zero when no 4-group exists", function()
+        local b = newBoard()
+        for r = 1, 3 do b:placeAt(r, 1, "Brown") end -- only 3 in column
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 0)
+    end)
+
+    t.it("pops a single 4-group and returns chainLength 1", function()
+        local b = newBoard()
+        for r = 1, 4 do b:placeAt(r, 1, "Pink") end
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 1)
+        t.assertEq(result.totalPopped, 4)
+        for r = 1, 4 do t.assertEq(b:cellAt(r, 1), nil) end
+    end)
+
+    t.it("triggers a 2-chain when gravity drops into a new match", function()
+        local b = newBoard()
+        -- Setup:
+        --   row 4: . . . . . .
+        --   row 3: Pink at col 1 (will fall)
+        --   row 2: Brown Brown Brown Brown _ _    (will pop)
+        --   row 1: Pink Pink Pink _ _ _
+        for c = 1, 4 do b:placeAt(2, c, "Brown") end
+        for c = 1, 3 do b:placeAt(1, c, "Pink") end
+        b:placeAt(3, 1, "Pink") -- floating pink atop col 1
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 2, "should be a 2-chain")
+        -- After: Pink popped from rows 1+3 (now 4 in a column after gravity); Brown popped first
+        t.assertEq(result.totalPopped, 8) -- 4 Brown + 4 Pink
+    end)
+
+    t.it("counts distinct colors in a single chain step", function()
+        local b = newBoard()
+        -- Two 4-groups of different colors pop in the same step
+        for c = 1, 4 do b:placeAt(1, c, "Pink") end
+        for c = 1, 4 do b:placeAt(3, c, "Green") end -- floating row 3
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 1, "single simultaneous step")
+        t.assertEq(result.steps[1].colors, 2, "two distinct colors in step 1")
+    end)
+
+    t.it("resolves a 3-chain (cascade through 3 levels)", function()
+        local b = newBoard()
+        -- Build a staircase that chains:
+        -- Set up 4 Browns row 1, then a Pink chain on top, then a Green on top of that.
+        for c = 1, 4 do b:placeAt(1, c, "Brown") end -- pops first
+        for c = 1, 4 do b:placeAt(2, c, "Pink") end  -- becomes row 1 after Brown pops, but already 4
+        for c = 1, 4 do b:placeAt(3, c, "Green") end -- becomes row 1 after Pink pops, but already 4
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 3)
+        t.assertEq(result.totalPopped, 12)
+    end)
+
+    t.it("garbage cubes survive a chain pop adjacent to them", function()
+        local b = newBoard()
+        for c = 1, 4 do b:placeAt(1, c, "Pink") end
+        b:placeAt(2, 1, "Garbage")
+        b:placeAt(2, 2, "Garbage")
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 1)
+        -- Garbage cubes should fall (gravity) but remain present
+        t.assertEq(b:cellAt(1, 1), "Garbage")
+        t.assertEq(b:cellAt(1, 2), "Garbage")
+    end)
+end)
+
+t.summary()
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+```bash
+lune run tests/ChainResolver.spec.luau
+```
+
+Expected: error about `ChainResolver` not found.
+
+- [ ] **Step 3: Implement ChainResolver.lua**
+
+```lua
+-- src/ReplicatedStorage/Shared/Logic/ChainResolver.lua
+local MatchDetector = require("../Logic/MatchDetector")
+
+local ChainResolver = {}
+
+-- Synchronously resolves all chain reactions on a board.
+-- Returns: {
+--   chainLength = number,
+--   totalPopped = number,
+--   steps = { { popped = number, colors = number }, ... } -- one entry per chain step
+-- }
+function ChainResolver.resolve(board)
+    local steps = {}
+    local totalPopped = 0
+
+    while true do
+        local groups = MatchDetector.findGroups(board)
+        if #groups == 0 then break end
+
+        local stepPopped = 0
+        local seenColors = {}
+        for _, group in groups do
+            for _, cell in group.cells do
+                board:clearAt(cell[1], cell[2])
+                stepPopped += 1
+            end
+            seenColors[group.color] = true
+        end
+
+        local colorCount = 0
+        for _ in seenColors do colorCount += 1 end
+
+        table.insert(steps, { popped = stepPopped, colors = colorCount })
+        totalPopped += stepPopped
+
+        board:gravitySettle()
+    end
+
+    return {
+        chainLength = #steps,
+        totalPopped = totalPopped,
+        steps = steps,
+    }
+end
+
+return ChainResolver
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+```bash
+lune run tests/ChainResolver.spec.luau
+```
+
+Expected: `7/7 passed (0 failed)`. If any chain-construction test fails, walk through the board state mentally for that scenario. The most likely bug is gravity-applied-before-pop or pop-applied-before-gravity (order matters — pop first, then gravity, then re-scan).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ReplicatedStorage/Shared/Logic/ChainResolver.lua tests/ChainResolver.spec.luau
+git commit -m "Day 2: ChainResolver synchronous resolve loop + 7 scenarios"
+git push
+```
+
+### Task 2.3: GameState.lua — state machine, scores, pub/sub
+
+**Files:**
+- Create: `src/ReplicatedStorage/Shared/Logic/GameState.lua`
+- Create: `tests/GameState.spec.luau`
+
+- [ ] **Step 1: Write the failing test**
+
+```lua
+-- tests/GameState.spec.luau
+local t = require("./_test_helpers")
+local GameState = require("../src/ReplicatedStorage/Shared/Logic/GameState")
+
+local function newState()
+    return GameState.new({
+        players = { "P1", "P2" },
+        seed = 42,
+    })
+end
+
+t.describe("GameState", function()
+    t.it("starts in 'waiting' phase", function()
+        local gs = newState()
+        t.assertEq(gs:phase(), "waiting")
+    end)
+
+    t.it("startRound transitions to 'playing' and assigns boards", function()
+        local gs = newState()
+        gs:startRound()
+        t.assertEq(gs:phase(), "playing")
+        t.assertEq(gs:boardFor("P1") ~= nil, true)
+        t.assertEq(gs:boardFor("P2") ~= nil, true)
+    end)
+
+    t.it("both players' boards use the same seed each round", function()
+        local gs = newState()
+        gs:startRound()
+        local p1Pieces = gs:boardFor("P1"):peek(5)
+        local p2Pieces = gs:boardFor("P2"):peek(5)
+        for i = 1, 5 do
+            t.assertEq(p1Pieces[i].a, p2Pieces[i].a)
+            t.assertEq(p1Pieces[i].b, p2Pieces[i].b)
+        end
+    end)
+
+    t.it("emits 'onChainResolved' to subscribers", function()
+        local gs = newState()
+        gs:startRound()
+        local received = nil
+        gs:subscribe("onChainResolved", function(event) received = event end)
+        gs:_dispatch("onChainResolved", { playerId = "P1", chainLength = 3 })
+        t.assertEq(received.playerId, "P1")
+        t.assertEq(received.chainLength, 3)
+    end)
+
+    t.it("forfeitRound advances the opponent's round score", function()
+        local gs = newState()
+        gs:startRound()
+        gs:forfeitRound("P1", "disconnect")
+        t.assertEq(gs:roundsWon("P2"), 1)
+        t.assertEq(gs:roundsWon("P1"), 0)
+    end)
+
+    t.it("forfeitRound fires onRoundEnd", function()
+        local gs = newState()
+        gs:startRound()
+        local fired = nil
+        gs:subscribe("onRoundEnd", function(e) fired = e end)
+        gs:forfeitRound("P1", "afk")
+        t.assertEq(fired.loser, "P1")
+        t.assertEq(fired.winner, "P2")
+        t.assertEq(fired.reason, "afk")
+    end)
+
+    t.it("match ends when a player reaches 2 round wins", function()
+        local gs = newState()
+        gs:startRound(); gs:forfeitRound("P1", "test")
+        gs:startRound(); gs:forfeitRound("P1", "test")
+        t.assertEq(gs:phase(), "matchOver")
+        t.assertEq(gs:matchWinner(), "P2")
+    end)
+
+    t.it("draw round does not increment either score and is not counted", function()
+        local gs = newState()
+        gs:startRound()
+        gs:declareDraw()
+        t.assertEq(gs:roundsWon("P1"), 0)
+        t.assertEq(gs:roundsWon("P2"), 0)
+        t.assertEq(gs:phase(), "playing", "draw doesn't advance match")
+    end)
+end)
+
+t.summary()
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+```bash
+lune run tests/GameState.spec.luau
+```
+
+Expected: error about `GameState` not found.
+
+- [ ] **Step 3: Implement GameState.lua**
+
+```lua
+-- src/ReplicatedStorage/Shared/Logic/GameState.lua
+local Constants = require("../Logic/Constants")
+local Board = require("../Logic/Board")
+
+local GameState = {}
+GameState.__index = GameState
+
+function GameState.new(ctx)
+    assert(ctx.players and #ctx.players == 2, "GameState requires exactly 2 players")
+    assert(ctx.seed, "GameState requires seed")
+    local self = setmetatable({}, GameState)
+    self._players = ctx.players
+    self._baseSeed = ctx.seed
+    self._phase = "waiting"
+    self._roundNumber = 0
+    self._roundsWon = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
+    self._scores = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 } -- per-round
+    self._boards = {}
+    self._subscribers = {}
+    self._matchWinner = nil
+    return self
+end
+
+function GameState:phase() return self._phase end
+function GameState:roundsWon(playerId) return self._roundsWon[playerId] end
+function GameState:scoreOf(playerId) return self._scores[playerId] end
+function GameState:boardFor(playerId) return self._boards[playerId] end
+function GameState:matchWinner() return self._matchWinner end
+function GameState:roundNumber() return self._roundNumber end
+
+function GameState:subscribe(eventName, fn)
+    self._subscribers[eventName] = self._subscribers[eventName] or {}
+    table.insert(self._subscribers[eventName], fn)
+end
+
+function GameState:_dispatch(eventName, payload)
+    local list = self._subscribers[eventName]
+    if not list then return end
+    for _, fn in list do
+        fn(payload)
+    end
+end
+
+function GameState:startRound()
+    self._roundNumber += 1
+    self._phase = "playing"
+    -- Both players use the same seed this round (versus convention)
+    local roundSeed = self._baseSeed + self._roundNumber * 1009
+    self._boards = {}
+    for _, p in self._players do
+        self._boards[p] = Board.new({ seed = roundSeed })
+        self._scores[p] = 0
+    end
+    self:_dispatch("onRoundStart", { round = self._roundNumber })
+end
+
+function GameState:_otherPlayer(playerId)
+    for _, p in self._players do
+        if p ~= playerId then return p end
+    end
+    error("unknown player " .. tostring(playerId))
+end
+
+function GameState:_endRound(winner, loser, reason)
+    self._roundsWon[winner] += 1
+    self:_dispatch("onRoundEnd", { winner = winner, loser = loser, reason = reason, round = self._roundNumber })
+    if self._roundsWon[winner] >= Constants.ROUNDS_TO_WIN then
+        self._phase = "matchOver"
+        self._matchWinner = winner
+        self:_dispatch("onMatchEnd", { winner = winner })
+    else
+        self._phase = "betweenRounds"
+    end
+end
+
+function GameState:forfeitRound(loserId, reason)
+    assert(self._phase == "playing", "forfeitRound only valid during 'playing'")
+    local winner = self:_otherPlayer(loserId)
+    self:_endRound(winner, loserId, reason)
+end
+
+function GameState:declareDraw()
+    assert(self._phase == "playing", "declareDraw only valid during 'playing'")
+    -- draw does not advance match; redo the round
+    self:_dispatch("onRoundDraw", { round = self._roundNumber })
+    -- decrement round number so startRound brings us back to same round number with fresh seed
+    self._roundNumber -= 1
+end
+
+return GameState
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+```bash
+lune run tests/GameState.spec.luau
+```
+
+Expected: `8/8 passed (0 failed)`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ReplicatedStorage/Shared/Logic/GameState.lua tests/GameState.spec.luau
+git commit -m "Day 2: GameState state machine + scores + pub/sub + forfeitRound + declareDraw"
+git push
+```
+
+### Task 2.4: Verify all logic tests pass together
+
+**Files:** none
+
+- [ ] **Step 1: Smoke run all spec files**
+
+```bash
+cd /Users/student/Documents/boba-drop
+for f in tests/*.spec.luau; do
+  echo "--- $f ---"
+  lune run "$f"
+done
+```
+
+Expected: every file prints "X/X passed (0 failed)". Total ≥ 15+ test cases across modules.
+
+- [ ] **Step 2: Studio sanity check**
+
+In Studio (Rojo connected), hit Play. No red errors in Output. (The logic modules don't run on their own yet — that's Day 3.)
+
+### Task 2.5: UI scaffold for chain feedback (Producer side)
+
+**Files:**
+- Create: `src/ReplicatedStorage/Shared/UI/UIConstants.lua`
+- Create: `src/StarterGui/GameUI/ChainCounter.client.lua`
+
+- [ ] **Step 1: Write UIConstants.lua**
+
+```lua
+-- src/ReplicatedStorage/Shared/UI/UIConstants.lua
+local UIConstants = {}
+
+UIConstants.Colors = {
+    Brown = Color3.fromRGB(120, 75, 50),
+    Pink = Color3.fromRGB(255, 180, 195),
+    Green = Color3.fromRGB(130, 200, 120),
+    White = Color3.fromRGB(245, 240, 230),
+    Garbage = Color3.fromRGB(180, 200, 220),
+    Background = Color3.fromRGB(30, 30, 40),
+    ChainCounterText = Color3.fromRGB(255, 230, 140),
+    GarbageWarning = Color3.fromRGB(255, 90, 90),
+    Blocked = Color3.fromRGB(120, 200, 255),
+}
+
+UIConstants.Fonts = {
+    HUD = Enum.Font.GothamBold,
+    Score = Enum.Font.GothamBlack,
+    Tutorial = Enum.Font.Gotham,
+}
+
+UIConstants.Durations = {
+    PopTell = 0.25,
+    GravitySettle = 0.30,
+    ChainCounterPersist = 1.0,
+    GarbageWarningLead = 0.5,
+    BlockedFlash = 0.4,
+}
+
+-- HUD z-order stack (higher = drawn on top)
+UIConstants.ZOrder = {
+    Background = 0,
+    Board = 10,
+    GarbageWarning = 50,
+    ChainCounter = 60,
+    RoundBanner = 80,
+    Tutorial = 90,
+    ShopOverlay = 100,
+    BlockedFlash = 110, -- rendered in different region from ChainCounter to avoid visual collision
+}
+
+UIConstants.Sizes = {
+    MobileOpponentCupScale = 0.30,
+    MinTouchTarget = 44, -- pt
+    MinGarbageWarningRow = 24, -- pt, even on shrunk opponent cup
+    MinSmallPearlPx = 20, -- below this size, swap dot pattern for shape outline
+}
+
+return UIConstants
+```
+
+- [ ] **Step 2: Write ChainCounter.client.lua (UI; manual Studio verification, not Lune-testable)**
+
+```lua
+-- src/StarterGui/GameUI/ChainCounter.client.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Events = require(ReplicatedStorage.Shared.Events)
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ChainCounter"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = UIConstants.ZOrder.ChainCounter
+screenGui.Parent = playerGui
+
+local label = Instance.new("TextLabel")
+label.Name = "ChainLabel"
+label.Size = UDim2.fromOffset(300, 80)
+label.AnchorPoint = Vector2.new(0.5, 0.5)
+label.Position = UDim2.fromScale(0.5, 0.35)
+label.BackgroundTransparency = 1
+label.Font = UIConstants.Fonts.HUD
+label.TextSize = 48
+label.TextColor3 = UIConstants.Colors.ChainCounterText
+label.TextStrokeTransparency = 0.4
+label.Text = ""
+label.Visible = false
+label.Parent = screenGui
+
+-- The actual ChainCompleted RemoteEvent is created on Day 3. WaitForChild gracefully blocks.
+local chainRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.ChainCompleted)
+
+local hideTask = nil
+chainRemote.OnClientEvent:Connect(function(payload)
+    -- payload: { playerId = string, chainLength = number, isLocal = boolean }
+    if not payload.isLocal then return end -- only show on the local player's screen
+    label.Text = "Chain x" .. payload.chainLength .. "!"
+    label.Visible = true
+    if hideTask then task.cancel(hideTask) end
+    hideTask = task.delay(UIConstants.Durations.ChainCounterPersist, function()
+        label.Visible = false
+        hideTask = nil
+    end)
+end)
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/ReplicatedStorage/Shared/UI/UIConstants.lua src/StarterGui/GameUI/ChainCounter.client.lua
+git commit -m "Day 2: UIConstants + ChainCounter UI (listens for ChainCompleted RemoteEvent)"
+git push
+```
+
+### Task 2.6: Day-2 exit checkpoint
+
+- [ ] **Step 1: All Lune tests pass**
+
+```bash
+cd /Users/student/Documents/boba-drop
+for f in tests/*.spec.luau; do lune run "$f"; done
+```
+
+Expected: every file passes. **Across all spec files, ≥15 test cases passing.**
+
+- [ ] **Step 2: Producer logs Day 2**
+
+DM `@Producer` at 5:45pm: "Write today's daily-log.md entry."
+
+**Day-2 exit gate:** ChainResolver is bulletproof against the 7 scenarios in the test file. GameState owns state transitions. Pub/sub events are wired but not yet networked (that's tomorrow). Chain counter UI listens for the ChainCompleted RemoteEvent — will start working tomorrow when the server starts emitting it.
+
+---
+
+(Day 3 + Day 4 follow.)
