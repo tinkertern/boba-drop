@@ -15,11 +15,17 @@ UIConstants.Colors = {
     Peach = Color3.fromRGB(255, 214, 165),       -- #FFD6A5
     Mint = Color3.fromRGB(199, 229, 192),        -- #C7E5C0
     Coral = Color3.fromRGB(255, 138, 124),       -- chain-gradient end + danger accent
+    WarmCancel = Color3.fromRGB(232, 146, 114),  -- #E89272 burnt-tan; cancel/dismiss buttons that must not read as "go" (mint)
+    Warning = Color3.fromRGB(194, 92, 63),       -- #C25C3F deep burnt coral; lose-state words ("overflow") so they read as worse than Coral
 
     -- Text — never pure black
     TextDark = Color3.fromRGB(61, 40, 23),       -- #3D2817
     TextSoft = Color3.fromRGB(120, 90, 70),      -- secondary labels
     TextOnWarm = Color3.fromRGB(255, 250, 240),  -- light text on coral/peach buttons
+
+    -- Warm dark wash. Same hex as TextDark but named for its non-text use
+    -- (modal scrims, shadow tints). Keeps semantics tidy at call sites.
+    WarmDark = Color3.fromRGB(61, 40, 23),       -- #3D2817
 
     -- Pearls (desaturated but vibrant, never neon)
     PearlBrown = Color3.fromRGB(160, 110, 80),

@@ -25,11 +25,14 @@ gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay
 gui.IgnoreGuiInset = true
 gui.Parent = playerGui
 
--- Scrim behind the modal so the lobby/match-end UI dims when the shop is open.
+-- Scrim behind the modal so the lobby/match-end UI dims when the shop is
+-- open. Uses WarmDark (the warm-brown wash) at 0.55 transparency so the
+-- dim reads as a cozy tint rather than the muddy near-black a neutral
+-- gray would give. Preserves contrast against the cream modal card.
 local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
 scrim.Size = UDim2.fromScale(1, 1)
-scrim.BackgroundColor3 = UIConstants.Colors.TextDark
+scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
 scrim.BackgroundTransparency = 0.55
 scrim.BorderSizePixel = 0
 scrim.Visible = false
@@ -182,18 +185,23 @@ local function previewSwatch(theme, order)
     pearl(theme.PearlPink, 0.5, 0.5, 28)
     pearl(theme.PearlGreen, 0.73, 0.32, 28)
 
-    -- TextWrapped + 2-line height lets "Brown Sugar Boba" wrap inside the
-    -- cell instead of spilling out the right edge. "Matcha" / "Strawberry
-    -- Milk" still center cleanly because TextYAlignment defaults to Center.
+    -- All three label boxes share a 2-line minimum height + Top alignment
+    -- so the labels align consistently across cards regardless of whether
+    -- the name wraps. Previously "Matcha" centered in a 32px slot while
+    -- "Brown Sugar Boba" filled it, making the cards bottom-align
+    -- unevenly. Top alignment plants every name on the same baseline.
+    local LABEL_LINE_HEIGHT = 16
+    local LABEL_HEIGHT = LABEL_LINE_HEIGHT * 2
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -8, 0, 32)
-    label.Position = UDim2.new(0, 4, 1, -36)
+    label.Size = UDim2.new(1, -8, 0, LABEL_HEIGHT)
+    label.Position = UDim2.new(0, 4, 1, -LABEL_HEIGHT - 4)
     label.BackgroundTransparency = 1
     label.FontFace = UIConstants.Fonts.HUD
     label.TextSize = UIConstants.TextSizes.HUDLabel
     label.TextColor3 = UIConstants.Colors.TextDark
     label.TextWrapped = true
     label.TextXAlignment = Enum.TextXAlignment.Center
+    label.TextYAlignment = Enum.TextYAlignment.Top
     label.Text = theme.name
     label.Parent = cell
 

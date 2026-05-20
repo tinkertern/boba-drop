@@ -113,18 +113,22 @@ label.TextXAlignment = Enum.TextXAlignment.Left
 label.TextYAlignment = Enum.TextYAlignment.Top
 label.FontFace = UIConstants.Fonts.Tutorial
 label.TextSize = UIConstants.TextSizes.Body
+-- "pop" stays Coral (positive feedback). "overflow" uses the deeper
+-- Warning hue (UIConstants.Colors.Warning = #C25C3F) so the lose-state
+-- verb reads as worse than the celebratory pop verb.
 label.Text = table.concat({
     "Match <b>4+</b> same-color pearls to <b><font color=\"rgb(255,138,124)\">pop</font></b>.",
     "<b><font color=\"rgb(255,175,195)\">Chain</font></b> pops send <b><font color=\"rgb(120,180,220)\">ice cubes</font></b> to your opponent.",
-    "Don't <b><font color=\"rgb(255,138,124)\">overflow</font></b> your cup.",
+    "Don't <b><font color=\"rgb(194,92,63)\">overflow</font></b> your cup.",
 }, "\n")
 label.Parent = textWrapper
 
 -- Direct child of card (not textWrapper) so the text-padding does not push
--- this off into the middle. Anchored to the card's actual top-right corner.
+-- this off into the middle. Anchored to the card's actual top-right corner
+-- with an 8px inset on both axes so the X sits flush in the corner.
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.fromOffset(28, 28)
-closeBtn.Position = UDim2.new(1, -10, 0, 10)
+closeBtn.Position = UDim2.new(1, -8, 0, 8)
 closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Text = "×"
 closeBtn.FontFace = UIConstants.Fonts.Display
@@ -165,8 +169,13 @@ local bobConn = RunService.RenderStepped:Connect(function()
 end)
 
 -- Queue state (declared early so applyVisibility can see it).
+-- queueActive = true while the timer is counting; flips to false after
+-- cancel or timeout (the pill stays up but shows Search-again).
+-- queuePillVisible = true while the pill is on-screen at all; the tutorial
+-- card hides for the whole window the pill is up, not just while searching.
 local queueStarted = tick()
 local queueActive = true
+local queuePillVisible = true
 
 -- Debug override: when true, force the card visible regardless of the
 -- DataStore-persisted dismiss attribute. Toggled by the corner "?" button
@@ -175,10 +184,10 @@ local queueActive = true
 local forceShow = false
 
 local function applyVisibility()
-    -- Tutorial card auto-hides while the matchmaking queue is active so
-    -- the two centered cards never overlap. Player either reads the rules
-    -- or watches the queue, not both at once.
-    if queueActive then
+    -- Tutorial card auto-hides while the queue pill is on-screen so the
+    -- two cards never compete for attention. Re-shows once the pill slides
+    -- away, unless the player has already dismissed the tutorial.
+    if queuePillVisible then
         card.Visible = false
         return
     end
@@ -207,14 +216,20 @@ card.InputBegan:Connect(function(input)
     end
 end)
 
--- Queue panel: cream pill below the tutorial card showing the elapsed
--- search time and a Cancel button. Counts up client-side; the server
--- RoomManager actually drives the match-found transition.
+-- Queue pill: bottom-anchored, horizontal. Status text + subtitle on the
+-- left, action button on the right. Slides up from below on start, slides
+-- down on dismiss. Lives at the bottom so it doesn't fight the tutorial
+-- card for the center of attention, and so the board (when present) reads
+-- above it. Lobby ScreenGui keeps the default topbar inset, so a fixed
+-- 24px bottom gap doubles as our safe-area buffer here.
+local PILL_BOTTOM_OFFSET = 24
+local PILL_HEIGHT = 92
+
 local queuePanel = Instance.new("Frame")
 queuePanel.Name = "Queue"
-queuePanel.Size = UDim2.fromOffset(340, 116)
-queuePanel.Position = UDim2.fromScale(0.5, 0.45)
-queuePanel.AnchorPoint = Vector2.new(0.5, 0.5)
+queuePanel.Size = UDim2.fromOffset(480, PILL_HEIGHT)
+queuePanel.Position = UDim2.new(0.5, 0, 1, PILL_HEIGHT + 80) -- start off-screen below for slide-in
+queuePanel.AnchorPoint = Vector2.new(0.5, 1)
 queuePanel.BackgroundColor3 = UIConstants.Colors.Cream
 queuePanel.BackgroundTransparency = 0
 queuePanel.BorderSizePixel = 0
@@ -230,31 +245,65 @@ queueStroke.Thickness = 2
 queueStroke.Transparency = 0.4
 queueStroke.Parent = queuePanel
 
+local queuePadding = Instance.new("UIPadding")
+queuePadding.PaddingTop = UDim.new(0, 12)
+queuePadding.PaddingBottom = UDim.new(0, 12)
+queuePadding.PaddingLeft = UDim.new(0, 20)
+queuePadding.PaddingRight = UDim.new(0, 16)
+queuePadding.Parent = queuePanel
+
+-- Status block on the left: title line + subtitle line (timer / hint).
+-- Subtitle lives on its own line so the digit count growing from "9s" to
+-- "10s" doesn't shift the title text horizontally.
+local statusBlock = Instance.new("Frame")
+statusBlock.Name = "Status"
+statusBlock.Size = UDim2.new(1, -168, 1, 0) -- leave room for the 152-wide action button + padding
+statusBlock.Position = UDim2.fromOffset(0, 0)
+statusBlock.BackgroundTransparency = 1
+statusBlock.Parent = queuePanel
+
 local queueLabel = Instance.new("TextLabel")
-queueLabel.Name = "Status"
-queueLabel.Size = UDim2.new(1, -24, 0, 52) -- tall enough for the 2-line timeout message
-queueLabel.Position = UDim2.fromOffset(12, 10)
+queueLabel.Name = "Title"
+queueLabel.Size = UDim2.new(1, 0, 0, 28)
+queueLabel.Position = UDim2.fromOffset(0, 6)
 queueLabel.BackgroundTransparency = 1
 queueLabel.FontFace = UIConstants.Fonts.HUD
 queueLabel.TextSize = UIConstants.TextSizes.Body
 queueLabel.TextColor3 = UIConstants.Colors.TextDark
 queueLabel.TextXAlignment = Enum.TextXAlignment.Left
-queueLabel.TextYAlignment = Enum.TextYAlignment.Top
-queueLabel.TextWrapped = true
-queueLabel.Text = "Searching for opponent...  0s"
-queueLabel.Parent = queuePanel
+queueLabel.TextYAlignment = Enum.TextYAlignment.Center
+queueLabel.TextWrapped = false
+queueLabel.Text = "Searching for opponent..."
+queueLabel.Parent = statusBlock
+
+-- Subtitle wraps so the post-timeout copy ("No opponent yet...") can run
+-- onto a second line if needed. Single-line "0s" / "4s" still sits at the
+-- top of the slot because TextYAlignment is Top.
+local subtitleLabel = Instance.new("TextLabel")
+subtitleLabel.Name = "Subtitle"
+subtitleLabel.Size = UDim2.new(1, 0, 0, 32)
+subtitleLabel.Position = UDim2.fromOffset(0, 36)
+subtitleLabel.BackgroundTransparency = 1
+subtitleLabel.FontFace = UIConstants.Fonts.Tutorial
+subtitleLabel.TextSize = UIConstants.TextSizes.SmallButton
+subtitleLabel.TextColor3 = UIConstants.Colors.TextSoft
+subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+subtitleLabel.TextYAlignment = Enum.TextYAlignment.Top
+subtitleLabel.TextWrapped = true
+subtitleLabel.Text = "0s"
+subtitleLabel.Parent = statusBlock
 
 local cancelBtn = Instance.new("TextButton")
 cancelBtn.Name = "CancelBtn"
-cancelBtn.Size = UDim2.fromOffset(144, 36) -- wide enough for "Search again"
-cancelBtn.Position = UDim2.new(0, 12, 1, -46)
-cancelBtn.AnchorPoint = Vector2.new(0, 0)
+cancelBtn.Size = UDim2.fromOffset(152, 48)
+cancelBtn.Position = UDim2.new(1, 0, 0.5, 0)
+cancelBtn.AnchorPoint = Vector2.new(1, 0.5)
 cancelBtn.AutoButtonColor = false
 cancelBtn.BorderSizePixel = 0
-cancelBtn.BackgroundColor3 = UIConstants.Colors.Mint
-cancelBtn.TextColor3 = UIConstants.Colors.TextDark
+cancelBtn.BackgroundColor3 = UIConstants.Colors.WarmCancel
+cancelBtn.TextColor3 = UIConstants.Colors.TextOnWarm
 cancelBtn.FontFace = UIConstants.Fonts.Display
-cancelBtn.TextSize = UIConstants.TextSizes.HUDLabel
+cancelBtn.TextSize = UIConstants.TextSizes.Body
 cancelBtn.Text = "Cancel"
 cancelBtn.Parent = queuePanel
 
@@ -262,34 +311,80 @@ local cancelCorner = Instance.new("UICorner")
 cancelCorner.CornerRadius = UIConstants.Corners.Button
 cancelCorner.Parent = cancelBtn
 
+local cancelStroke = Instance.new("UIStroke")
+cancelStroke.Color = UIConstants.Colors.StrokeWarm
+cancelStroke.Thickness = 1.5
+cancelStroke.Transparency = 0.3
+cancelStroke.Parent = cancelBtn
+
 local cancelScale = Instance.new("UIScale")
 cancelScale.Scale = 1
 cancelScale.Parent = cancelBtn
 
+-- Slide animations. The pill's resting position is bottom-anchored with
+-- a 24px gap (PILL_BOTTOM_OFFSET). It slides in from y = +200 below, and
+-- slides back down to dismiss. Back/Out easing gives a slight overshoot
+-- that feels game-y without being silly.
+local PILL_RESTING_POSITION = UDim2.new(0.5, 0, 1, -PILL_BOTTOM_OFFSET)
+local PILL_HIDDEN_POSITION = UDim2.new(0.5, 0, 1, 200)
+
+local function slideIn()
+    queuePanel.Position = PILL_HIDDEN_POSITION
+    queuePanel.Visible = true
+    queuePillVisible = true
+    applyVisibility()
+    TweenService:Create(
+        queuePanel,
+        UIConstants.tween(0.35, "UI"),
+        { Position = PILL_RESTING_POSITION }
+    ):Play()
+end
+
+-- slideOut is kept here for the eventual MatchFound / explicit-dismiss
+-- handler. The Cancel button currently flips state in place rather than
+-- dismissing, so this only runs when something else closes the queue.
+local function slideOut()
+    queuePillVisible = false
+    applyVisibility()
+    local tween = TweenService:Create(
+        queuePanel,
+        UIConstants.tween(0.3, "UIIn"),
+        { Position = PILL_HIDDEN_POSITION }
+    )
+    tween.Completed:Connect(function()
+        queuePanel.Visible = false
+    end)
+    tween:Play()
+end
+
 -- Queue lifecycle: startQueue() drives the elapsed timer and flips
--- the cancel button into a Cancel / Search-again toggle, so the panel
+-- the cancel button into a Cancel / Search-again toggle, so the pill
 -- always has an actionable button instead of an inert post-state.
-local function setSearchAgainMode(message)
+local function setSearchAgainMode(subtitle)
     queueActive = false
-    queueLabel.Text = message
+    queueLabel.Text = "Queue canceled"
+    subtitleLabel.Text = subtitle
     cancelBtn.Text = "Search again"
     cancelBtn.BackgroundColor3 = UIConstants.Colors.Peach
+    cancelBtn.TextColor3 = UIConstants.Colors.TextDark
     applyVisibility()
 end
 
 local function startQueue()
     queueStarted = tick()
     queueActive = true
-    queueLabel.Text = "Searching for opponent...  0s"
+    queueLabel.Text = "Searching for opponent..."
+    subtitleLabel.Text = "0s"
     cancelBtn.Text = "Cancel"
-    cancelBtn.BackgroundColor3 = UIConstants.Colors.Mint
+    cancelBtn.BackgroundColor3 = UIConstants.Colors.WarmCancel
+    cancelBtn.TextColor3 = UIConstants.Colors.TextOnWarm
     applyVisibility()
     task.spawn(function()
         while queueActive and queuePanel.Parent do
             local elapsed = math.floor(tick() - queueStarted)
-            queueLabel.Text = ("Searching for opponent...  %ds"):format(elapsed)
+            subtitleLabel.Text = ("%ds"):format(elapsed)
             if elapsed >= Constants.QUEUE_TIMEOUT then
-                setSearchAgainMode("No opponent yet. Play vs CPU or invite a friend.")
+                setSearchAgainMode("No opponent yet. Try again or invite a friend.")
                 break
             end
             task.wait(1)
@@ -297,12 +392,13 @@ local function startQueue()
     end)
 end
 
+slideIn()
 startQueue()
 
 cancelBtn.MouseButton1Click:Connect(function()
     squish(cancelScale)
     if queueActive then
-        setSearchAgainMode("Queue canceled")
+        setSearchAgainMode("Tap Search again when you're ready.")
     else
         startQueue()
         -- TODO Day 4: fire a real RequeueRequest RemoteEvent if/when the server adds one.
@@ -382,6 +478,11 @@ end)
 -- ── Debug toggle ────────────────────────────────────────────────────────
 -- Tiny corner button to force-show the tutorial card during testing.
 -- Safe to delete this whole block once the tutorial visuals are settled.
+--
+-- Open design question: should the ? button mute during queue the same
+-- way the Themes button does? Themes mutes (good, no accidental buys mid-
+-- queue). The ? is a debug affordance and stays full-color for now. See
+-- Slack thread 1779258843 for the call.
 local debugBtn = Instance.new("TextButton")
 debugBtn.Name = "TutorialDebugToggle"
 debugBtn.Size = UDim2.fromOffset(32, 32)
