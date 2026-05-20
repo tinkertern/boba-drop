@@ -1,8 +1,9 @@
--- Lobby tutorial card. Cozy cream + peach styling, idle bob to feel alive.
--- Dismiss state lives on the server (DataStore); client reads via
--- player:GetAttribute("TutorialDismissed") and fires DismissTutorial
--- RemoteEvent to request the write.
--- Day 3 will extend this file with queue UI + themes button.
+-- Lobby UI: tutorial card + matchmaking queue panel + themes button.
+-- Tutorial dismiss state lives on the server (DataStore); client reads
+-- via player:GetAttribute("TutorialDismissed") and fires DismissTutorial
+-- RemoteEvent to request the write. Queue UI is client-side elapsed
+-- timer; the server-side RoomManager actually matches players. Themes
+-- button opens the Shop modal via _G.BobaDropShop.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,6 +11,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
 
 local ATTRIBUTE = "TutorialDismissed"
 
@@ -133,6 +135,141 @@ card.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         requestDismiss()
+    end
+end)
+
+-- Queue panel: cream pill below the tutorial card showing the elapsed
+-- search time and a Cancel button. Counts up client-side; the server
+-- RoomManager actually drives the match-found transition.
+local queuePanel = Instance.new("Frame")
+queuePanel.Name = "Queue"
+queuePanel.Size = UDim2.fromOffset(300, 92)
+queuePanel.Position = UDim2.fromScale(0.5, 0.45)
+queuePanel.AnchorPoint = Vector2.new(0.5, 0.5)
+queuePanel.BackgroundColor3 = UIConstants.Colors.Cream
+queuePanel.BackgroundTransparency = 0
+queuePanel.BorderSizePixel = 0
+queuePanel.Parent = screenGui
+
+local queueCorner = Instance.new("UICorner")
+queueCorner.CornerRadius = UIConstants.Corners.Card
+queueCorner.Parent = queuePanel
+
+local queueStroke = Instance.new("UIStroke")
+queueStroke.Color = UIConstants.Colors.StrokeWarm
+queueStroke.Thickness = 2
+queueStroke.Transparency = 0.4
+queueStroke.Parent = queuePanel
+
+local queueLabel = Instance.new("TextLabel")
+queueLabel.Name = "Status"
+queueLabel.Size = UDim2.new(1, -24, 0, 28)
+queueLabel.Position = UDim2.fromOffset(12, 10)
+queueLabel.BackgroundTransparency = 1
+queueLabel.FontFace = UIConstants.Fonts.HUD
+queueLabel.TextSize = UIConstants.TextSizes.Body
+queueLabel.TextColor3 = UIConstants.Colors.TextDark
+queueLabel.TextXAlignment = Enum.TextXAlignment.Left
+queueLabel.Text = "Searching for opponent...  0s"
+queueLabel.Parent = queuePanel
+
+local cancelBtn = Instance.new("TextButton")
+cancelBtn.Name = "CancelBtn"
+cancelBtn.Size = UDim2.fromOffset(120, 36)
+cancelBtn.Position = UDim2.new(0, 12, 1, -46)
+cancelBtn.AnchorPoint = Vector2.new(0, 0)
+cancelBtn.AutoButtonColor = false
+cancelBtn.BorderSizePixel = 0
+cancelBtn.BackgroundColor3 = UIConstants.Colors.Mint
+cancelBtn.TextColor3 = UIConstants.Colors.TextDark
+cancelBtn.FontFace = UIConstants.Fonts.Display
+cancelBtn.TextSize = UIConstants.TextSizes.HUDLabel
+cancelBtn.Text = "Cancel"
+cancelBtn.Parent = queuePanel
+
+local cancelCorner = Instance.new("UICorner")
+cancelCorner.CornerRadius = UIConstants.Corners.Button
+cancelCorner.Parent = cancelBtn
+
+local cancelScale = Instance.new("UIScale")
+cancelScale.Scale = 1
+cancelScale.Parent = cancelBtn
+
+local queueStarted = tick()
+local queueActive = true
+
+task.spawn(function()
+    while queueActive and queuePanel.Parent do
+        local elapsed = math.floor(tick() - queueStarted)
+        queueLabel.Text = ("Searching for opponent...  %ds"):format(elapsed)
+        if elapsed >= Constants.QUEUE_TIMEOUT then
+            queueLabel.Text = "No opponent yet. Play vs CPU or invite a friend."
+            queueActive = false
+            break
+        end
+        task.wait(1)
+    end
+end)
+
+cancelBtn.MouseButton1Click:Connect(function()
+    squish(cancelScale)
+    queueActive = false
+    queueLabel.Text = "Queue canceled"
+    -- TODO Day 4: fire a real LeaveQueue RemoteEvent if/when the server adds one.
+end)
+
+-- Themes button: opens the Shop modal. Disabled (greyed) while the queue
+-- is active so players can't accidentally buy mid-matchmaking.
+local themesBtn = Instance.new("TextButton")
+themesBtn.Name = "ThemesBtn"
+themesBtn.Size = UDim2.fromOffset(132, 36)
+themesBtn.Position = UDim2.new(1, -56, 0, 16)
+themesBtn.AnchorPoint = Vector2.new(1, 0)
+themesBtn.AutoButtonColor = false
+themesBtn.BorderSizePixel = 0
+themesBtn.BackgroundColor3 = UIConstants.Colors.Peach
+themesBtn.TextColor3 = UIConstants.Colors.TextDark
+themesBtn.FontFace = UIConstants.Fonts.Display
+themesBtn.TextSize = UIConstants.TextSizes.HUDLabel
+themesBtn.Text = "Themes"
+themesBtn.Parent = screenGui
+
+local themesCorner = Instance.new("UICorner")
+themesCorner.CornerRadius = UIConstants.Corners.Button
+themesCorner.Parent = themesBtn
+
+local themesStroke = Instance.new("UIStroke")
+themesStroke.Color = UIConstants.Colors.StrokeWarm
+themesStroke.Thickness = 1.5
+themesStroke.Transparency = 0.4
+themesStroke.Parent = themesBtn
+
+local themesScale = Instance.new("UIScale")
+themesScale.Scale = 1
+themesScale.Parent = themesBtn
+
+local function applyThemesEnabled()
+    local enabled = not queueActive
+    themesBtn.AutoButtonColor = enabled
+    themesBtn.TextTransparency = enabled and 0 or 0.4
+    themesBtn.BackgroundTransparency = enabled and 0 or 0.3
+end
+applyThemesEnabled()
+
+-- Poll queueActive once per second so the themes button updates after the
+-- 60s timeout flips queueActive to false.
+task.spawn(function()
+    while themesBtn.Parent do
+        applyThemesEnabled()
+        task.wait(0.5)
+    end
+end)
+
+themesBtn.MouseButton1Click:Connect(function()
+    if queueActive then return end
+    squish(themesScale)
+    if _G.BobaDropShop then
+        _G.BobaDropShop.open()
     end
 end)
 
