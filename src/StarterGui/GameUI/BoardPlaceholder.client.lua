@@ -67,11 +67,21 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.StartCorner = Enum.StartCorner.BottomLeft
 grid.Parent = container
 
+-- Two cell tones alternated per row so the grid reads against the cream
+-- container backdrop. Stronger stroke for cell edges so each cell is visible.
+local CELL_TONE_A = Color3.fromRGB(252, 240, 220)
+local CELL_TONE_B = Color3.fromRGB(245, 230, 208)
+
 local function makeCell(row, col, isDanger)
     local cell = Instance.new("Frame")
     cell.Name = ("Cell_%d_%d"):format(row, col)
-    cell.BackgroundColor3 = isDanger and UIConstants.Colors.GarbageWarning or UIConstants.Colors.Cream
-    cell.BackgroundTransparency = isDanger and 0.55 or 0.92
+    if isDanger then
+        cell.BackgroundColor3 = UIConstants.Colors.GarbageWarning
+        cell.BackgroundTransparency = 0.45
+    else
+        cell.BackgroundColor3 = (row % 2 == 0) and CELL_TONE_A or CELL_TONE_B
+        cell.BackgroundTransparency = 0.35
+    end
     cell.BorderSizePixel = 0
     cell.LayoutOrder = (BOARD_TOTAL_HEIGHT - row) * BOARD_WIDTH + col
     cell.Parent = container
@@ -83,7 +93,7 @@ local function makeCell(row, col, isDanger)
     local stroke = Instance.new("UIStroke")
     stroke.Thickness = 1
     stroke.Color = UIConstants.Colors.StrokeSoft
-    stroke.Transparency = 0.5
+    stroke.Transparency = 0.25
     stroke.Parent = cell
 end
 

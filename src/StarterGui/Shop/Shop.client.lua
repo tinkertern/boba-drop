@@ -168,16 +168,19 @@ previewSwatch(Themes.BrownSugarBoba, 1)
 previewSwatch(Themes.StrawberryMilk, 2)
 previewSwatch(Themes.Matcha, 3)
 
--- Buy + close buttons
-local function makeBtn(name, text, bg, anchorX, layoutOrder)
+-- Buy + close buttons.
+-- The Buy button uses Coral (the chain-gradient end color) as a primary
+-- accent so it does not blend with the Brown Sugar swatch's peach
+-- background in the preview row. Cream text + warm stroke for contrast.
+local function makeBtn(name, text, opts)
     local btn = Instance.new("TextButton")
     btn.Name = name
     btn.Size = UDim2.fromOffset(170, 52)
-    btn.Position = UDim2.new(anchorX, anchorX == 0 and 0 or -170, 1, -52)
+    btn.Position = UDim2.new(opts.anchorX, opts.anchorX == 0 and 0 or -170, 1, -52)
     btn.AutoButtonColor = false
     btn.BorderSizePixel = 0
-    btn.BackgroundColor3 = bg
-    btn.TextColor3 = UIConstants.Colors.TextDark
+    btn.BackgroundColor3 = opts.bg
+    btn.TextColor3 = opts.text
     btn.FontFace = UIConstants.Fonts.Display
     btn.TextSize = UIConstants.TextSizes.Body
     btn.Text = text
@@ -187,6 +190,14 @@ local function makeBtn(name, text, bg, anchorX, layoutOrder)
     corner.CornerRadius = UIConstants.Corners.Button
     corner.Parent = btn
 
+    if opts.stroke then
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = opts.stroke
+        stroke.Thickness = 2
+        stroke.Transparency = 0.3
+        stroke.Parent = btn
+    end
+
     local scale = Instance.new("UIScale")
     scale.Scale = 1
     scale.Parent = btn
@@ -194,8 +205,17 @@ local function makeBtn(name, text, bg, anchorX, layoutOrder)
     return btn, scale
 end
 
-local buyBtn, buyScale = makeBtn("BuyBtn", "Buy for 99 R$", UIConstants.Colors.Peach, 0)
-local closeBtn, closeScale = makeBtn("CloseBtn", "Close", UIConstants.Colors.Mint, 1)
+local buyBtn, buyScale = makeBtn("BuyBtn", "Buy for 99 R$", {
+    bg = UIConstants.Colors.Coral,
+    text = UIConstants.Colors.TextOnWarm,
+    stroke = UIConstants.Colors.StrokeWarm,
+    anchorX = 0,
+})
+local closeBtn, closeScale = makeBtn("CloseBtn", "Close", {
+    bg = UIConstants.Colors.Mint,
+    text = UIConstants.Colors.TextDark,
+    anchorX = 1,
+})
 
 local function squish(target)
     target.Scale = UIConstants.Motion.ButtonPressScale

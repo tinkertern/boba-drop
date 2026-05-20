@@ -106,6 +106,10 @@ local bobConn = RunService.RenderStepped:Connect(function()
     card.Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset, basePosY, baseOffsetY + offset)
 end)
 
+-- Queue state (declared early so applyVisibility can see it).
+local queueStarted = tick()
+local queueActive = true
+
 -- Debug override: when true, force the card visible regardless of the
 -- DataStore-persisted dismiss attribute. Toggled by the corner "?" button
 -- below. Remove the whole `Debug toggle` block (and the forceShow read in
@@ -113,6 +117,13 @@ end)
 local forceShow = false
 
 local function applyVisibility()
+    -- Tutorial card auto-hides while the matchmaking queue is active so
+    -- the two centered cards never overlap. Player either reads the rules
+    -- or watches the queue, not both at once.
+    if queueActive then
+        card.Visible = false
+        return
+    end
     if forceShow then
         card.Visible = true
         return
@@ -195,27 +206,47 @@ local cancelScale = Instance.new("UIScale")
 cancelScale.Scale = 1
 cancelScale.Parent = cancelBtn
 
-local queueStarted = tick()
-local queueActive = true
+-- Queue lifecycle: startQueue() drives the elapsed timer and flips
+-- the cancel button into a Cancel / Search-again toggle, so the panel
+-- always has an actionable button instead of an inert post-state.
+local function setSearchAgainMode(message)
+    queueActive = false
+    queueLabel.Text = message
+    cancelBtn.Text = "Search again"
+    cancelBtn.BackgroundColor3 = UIConstants.Colors.Peach
+    applyVisibility()
+end
 
-task.spawn(function()
-    while queueActive and queuePanel.Parent do
-        local elapsed = math.floor(tick() - queueStarted)
-        queueLabel.Text = ("Searching for opponent...  %ds"):format(elapsed)
-        if elapsed >= Constants.QUEUE_TIMEOUT then
-            queueLabel.Text = "No opponent yet. Play vs CPU or invite a friend."
-            queueActive = false
-            break
+local function startQueue()
+    queueStarted = tick()
+    queueActive = true
+    queueLabel.Text = "Searching for opponent...  0s"
+    cancelBtn.Text = "Cancel"
+    cancelBtn.BackgroundColor3 = UIConstants.Colors.Mint
+    applyVisibility()
+    task.spawn(function()
+        while queueActive and queuePanel.Parent do
+            local elapsed = math.floor(tick() - queueStarted)
+            queueLabel.Text = ("Searching for opponent...  %ds"):format(elapsed)
+            if elapsed >= Constants.QUEUE_TIMEOUT then
+                setSearchAgainMode("No opponent yet. Play vs CPU or invite a friend.")
+                break
+            end
+            task.wait(1)
         end
-        task.wait(1)
-    end
-end)
+    end)
+end
+
+startQueue()
 
 cancelBtn.MouseButton1Click:Connect(function()
     squish(cancelScale)
-    queueActive = false
-    queueLabel.Text = "Queue canceled"
-    -- TODO Day 4: fire a real LeaveQueue RemoteEvent if/when the server adds one.
+    if queueActive then
+        setSearchAgainMode("Queue canceled")
+    else
+        startQueue()
+        -- TODO Day 4: fire a real RequeueRequest RemoteEvent if/when the server adds one.
+    end
 end)
 
 -- Themes button: opens the Shop modal. Disabled (greyed) while the queue
@@ -248,11 +279,26 @@ local themesScale = Instance.new("UIScale")
 themesScale.Scale = 1
 themesScale.Parent = themesBtn
 
+-- Full color-swap between enabled (vibrant peach) and disabled (muted
+-- cream) so the affordance is unambiguous, not just a transparency dim.
 local function applyThemesEnabled()
     local enabled = not queueActive
     themesBtn.AutoButtonColor = enabled
-    themesBtn.TextTransparency = enabled and 0 or 0.4
-    themesBtn.BackgroundTransparency = enabled and 0 or 0.3
+    if enabled then
+        themesBtn.BackgroundColor3 = UIConstants.Colors.Peach
+        themesBtn.TextColor3 = UIConstants.Colors.TextDark
+        themesBtn.BackgroundTransparency = 0
+        themesBtn.TextTransparency = 0
+        themesStroke.Color = UIConstants.Colors.StrokeWarm
+        themesStroke.Transparency = 0.3
+    else
+        themesBtn.BackgroundColor3 = UIConstants.Colors.Cream
+        themesBtn.TextColor3 = UIConstants.Colors.TextSoft
+        themesBtn.BackgroundTransparency = 0.15
+        themesBtn.TextTransparency = 0.2
+        themesStroke.Color = UIConstants.Colors.StrokeSoft
+        themesStroke.Transparency = 0.55
+    end
 end
 applyThemesEnabled()
 
