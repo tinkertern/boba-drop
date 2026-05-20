@@ -10,7 +10,8 @@ local UIConstants = {}
 
 UIConstants.Colors = {
     -- Pastel base palette
-    Cream = Color3.fromRGB(255, 246, 232),       -- #FFF6E8
+    Cream = Color3.fromRGB(255, 246, 232),       -- #FFF6E8 — card / panel / button surface
+    Backdrop = Color3.fromRGB(250, 226, 192),    -- #FAE2C0 — full-screen behind everything; warmer than Cream so cream surfaces read as elevated
     Peach = Color3.fromRGB(255, 214, 165),       -- #FFD6A5
     Mint = Color3.fromRGB(199, 229, 192),        -- #C7E5C0
     Coral = Color3.fromRGB(255, 138, 124),       -- chain-gradient end + danger accent
