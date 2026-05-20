@@ -93,11 +93,21 @@ end
 
 function GameState:_endRound(winner, loser, reason)
     self._roundsWon[winner] += 1
-    self:_dispatch("onRoundEnd", { winner = winner, loser = loser, reason = reason, round = self._roundNumber })
+    self:_dispatch("onRoundEnd", {
+        winner = winner,
+        loser = loser,
+        reason = reason,
+        round = self._roundNumber,
+        scores = { [self._players[1]] = self._scores[self._players[1]], [self._players[2]] = self._scores[self._players[2]] },
+    })
     if self._roundsWon[winner] >= Constants.ROUNDS_TO_WIN then
         self._phase = "matchOver"
         self._matchWinner = winner
-        self:_dispatch("onMatchEnd", { winner = winner })
+        self:_dispatch("onMatchEnd", {
+            winner = winner,
+            finalScores = { [self._players[1]] = self._scores[self._players[1]], [self._players[2]] = self._scores[self._players[2]] },
+            bestChain = { [self._players[1]] = self._bestChain[self._players[1]], [self._players[2]] = self._bestChain[self._players[2]] },
+        })
     else
         self._phase = "betweenRounds"
     end
