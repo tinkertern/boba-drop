@@ -8,6 +8,8 @@ Events.Names = {
     InputRotate = "InputRotate", -- payload: { direction = "cw" | "ccw" }
     InputSoftDrop = "InputSoftDrop", -- payload: { held = boolean }
     InputHardDrop = "InputHardDrop", -- payload: {}
+    RematchRequest = "RematchRequest", -- payload: {}
+    LeaveMatch = "LeaveMatch",   -- payload: {}
 
     -- Server → Client (state) — populated Day 3
     PieceLocked = "PieceLocked",
