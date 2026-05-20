@@ -1,8 +1,8 @@
--- Day 1 placeholder: 2D play-column grid.
--- A 6-wide x 14-tall cell grid centered on screen, aspect-locked so it
--- renders consistently on desktop and mobile. The 12th row is marked as
--- the danger line. Pure visual scaffold — Day 3 rendering will replace
--- the empty cells with piece sprites.
+-- Day 1 placeholder: 2D play-column grid styled per the cozy/bubbly art direction.
+-- A 6-wide x 14-tall cell grid centered on screen, aspect-locked so it renders
+-- consistently on desktop and mobile. The 12th row is marked as the danger line
+-- in a soft coral. Pure visual scaffold — Day 3 rendering will replace the empty
+-- cells with glossy pearls.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,21 +24,37 @@ screenGui.DisplayOrder = UIConstants.ZOrder.Board
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
--- Container that locks aspect ratio so the board is the same shape on every device.
 local container = Instance.new("Frame")
 container.Name = "BoardFrame"
 container.AnchorPoint = Vector2.new(0.5, 0.5)
 container.Position = UDim2.fromScale(0.5, 0.5)
 container.Size = UDim2.fromScale(0.45, 0.85)
-container.BackgroundColor3 = UIConstants.Colors.Background
-container.BackgroundTransparency = 0.15
+container.BackgroundColor3 = UIConstants.Colors.Cream
+container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
 container.Parent = screenGui
+
+local containerCorner = Instance.new("UICorner")
+containerCorner.CornerRadius = UIConstants.Corners.Card
+containerCorner.Parent = container
+
+local containerStroke = Instance.new("UIStroke")
+containerStroke.Color = UIConstants.Colors.StrokeWarm
+containerStroke.Thickness = 2
+containerStroke.Transparency = 0.5
+containerStroke.Parent = container
 
 local aspect = Instance.new("UIAspectRatioConstraint")
 aspect.AspectRatio = BOARD_WIDTH / BOARD_TOTAL_HEIGHT
 aspect.DominantAxis = Enum.DominantAxis.Height
 aspect.Parent = container
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 12)
+padding.PaddingBottom = UDim.new(0, 12)
+padding.PaddingLeft = UDim.new(0, 12)
+padding.PaddingRight = UDim.new(0, 12)
+padding.Parent = container
 
 local grid = Instance.new("UIGridLayout")
 grid.Name = "Grid"
@@ -54,16 +70,20 @@ grid.Parent = container
 local function makeCell(row, col, isDanger)
     local cell = Instance.new("Frame")
     cell.Name = ("Cell_%d_%d"):format(row, col)
-    cell.BackgroundColor3 = isDanger and UIConstants.Colors.GarbageWarning or UIConstants.Colors.Background
-    cell.BackgroundTransparency = isDanger and 0.6 or 0.9
+    cell.BackgroundColor3 = isDanger and UIConstants.Colors.GarbageWarning or UIConstants.Colors.Cream
+    cell.BackgroundTransparency = isDanger and 0.55 or 0.92
     cell.BorderSizePixel = 0
     cell.LayoutOrder = (BOARD_TOTAL_HEIGHT - row) * BOARD_WIDTH + col
     cell.Parent = container
 
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Cell
+    corner.Parent = cell
+
     local stroke = Instance.new("UIStroke")
     stroke.Thickness = 1
-    stroke.Color = Color3.fromRGB(60, 60, 75)
-    stroke.Transparency = 0.6
+    stroke.Color = UIConstants.Colors.StrokeSoft
+    stroke.Transparency = 0.5
     stroke.Parent = cell
 end
 

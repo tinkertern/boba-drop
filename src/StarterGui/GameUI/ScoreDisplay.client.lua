@@ -1,11 +1,12 @@
--- Day 1 scaffold: in-game score HUD.
--- Server is authoritative on score: Day 3 will extend ChainCompleted with
--- `scoreAdded` (computed via Scoring.compute on the server). Client just
--- accumulates that and resets on RoundEnd. Until Day 3, scoreAdded is
--- absent and the HUD stays at 0.
+-- In-game score HUD — cream pill, rounded, warm-dark text.
+-- Server is authoritative on score: Day 3 ChainCompleted carries `scoreAdded`
+-- (computed via Scoring.compute on the server). Client just accumulates that
+-- and resets on RoundEnd. Until Day 3 the HUD stays at 0.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 local Events = require(ReplicatedStorage.Shared.Events)
 
@@ -20,44 +21,63 @@ screenGui.Parent = playerGui
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.fromOffset(160, 56)
-panel.Position = UDim2.fromOffset(16, 16)
-panel.BackgroundColor3 = UIConstants.Colors.Background
-panel.BackgroundTransparency = 0.35
+panel.Size = UDim2.fromOffset(176, 64)
+panel.Position = UDim2.fromOffset(20, 20)
+panel.BackgroundColor3 = UIConstants.Colors.Cream
+panel.BackgroundTransparency = 0
 panel.BorderSizePixel = 0
 panel.Parent = screenGui
 
+local panelCorner = Instance.new("UICorner")
+panelCorner.CornerRadius = UIConstants.Corners.Card
+panelCorner.Parent = panel
+
+local panelStroke = Instance.new("UIStroke")
+panelStroke.Color = UIConstants.Colors.StrokeWarm
+panelStroke.Thickness = 2
+panelStroke.Transparency = 0.55
+panelStroke.Parent = panel
+
 local labelTitle = Instance.new("TextLabel")
 labelTitle.Name = "Title"
-labelTitle.Size = UDim2.new(1, -16, 0, 18)
-labelTitle.Position = UDim2.fromOffset(8, 4)
+labelTitle.Size = UDim2.new(1, -20, 0, 18)
+labelTitle.Position = UDim2.fromOffset(12, 6)
 labelTitle.BackgroundTransparency = 1
 labelTitle.Font = UIConstants.Fonts.HUD
-labelTitle.TextSize = 14
-labelTitle.TextColor3 = Color3.fromRGB(220, 220, 230)
+labelTitle.TextSize = UIConstants.TextSizes.HUDLabel
+labelTitle.TextColor3 = UIConstants.Colors.TextSoft
 labelTitle.TextXAlignment = Enum.TextXAlignment.Left
 labelTitle.Text = "SCORE"
 labelTitle.Parent = panel
 
 local labelValue = Instance.new("TextLabel")
 labelValue.Name = "Value"
-labelValue.Size = UDim2.new(1, -16, 0, 28)
-labelValue.Position = UDim2.fromOffset(8, 22)
+labelValue.Size = UDim2.new(1, -20, 0, 34)
+labelValue.Position = UDim2.fromOffset(12, 24)
 labelValue.BackgroundTransparency = 1
-labelValue.Font = UIConstants.Fonts.Score
-labelValue.TextSize = 26
-labelValue.TextColor3 = Color3.new(1, 1, 1)
+labelValue.Font = UIConstants.Fonts.Display
+labelValue.TextSize = UIConstants.TextSizes.Score
+labelValue.TextColor3 = UIConstants.Colors.TextDark
 labelValue.TextXAlignment = Enum.TextXAlignment.Left
 labelValue.Text = "0"
 labelValue.Parent = panel
 
+local valueScale = Instance.new("UIScale")
+valueScale.Scale = 1
+valueScale.Parent = labelValue
+
 local score = 0
 local function render()
     labelValue.Text = tostring(score)
+    -- Tiny bounce on each update.
+    valueScale.Scale = 1.15
+    TweenService:Create(
+        valueScale,
+        UIConstants.tween(UIConstants.Durations.BounceIn, "UI"),
+        { Scale = 1 }
+    ):Play()
 end
 
--- Day 3 wires up Remotes; use timeouts so we don't warn when the folder
--- doesn't exist yet.
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
 if not remotes then
     return
