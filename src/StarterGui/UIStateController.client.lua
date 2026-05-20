@@ -77,10 +77,15 @@ end
 local function applyVisibility()
     local map = VISIBILITY[currentState]
     if not map then return end
-    for name, enabled in pairs(map) do
-        local gui = playerGui:FindFirstChild(name)
-        if gui and gui:IsA("ScreenGui") then
-            gui.Enabled = enabled
+    -- Iterate by ScreenGui IsA-check, not by FindFirstChild(name): Rojo mirrors
+    -- src/StarterGui/<Name>/ as a Folder in PlayerGui with the same name as the
+    -- ScreenGui the inner script creates (Lobby, MatchEnd, Shop, Backdrop all
+    -- collide). FindFirstChild returns whichever child sorts first, which is
+    -- usually the Folder, so .Enabled silently no-ops and state transitions
+    -- after the initial frame stop working.
+    for _, gui in playerGui:GetChildren() do
+        if gui:IsA("ScreenGui") and map[gui.Name] ~= nil then
+            gui.Enabled = map[gui.Name]
         end
     end
 end
