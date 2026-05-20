@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Cream background with warm-brown outline -->
+  <rect x="14" y="14" width="484" height="484" rx="64" ry="64" fill="#FFF6E8" stroke="#B48C64" stroke-width="10"/>
+
+  <!-- Brown Sugar Boba pearl (top-left) -->
+  <g>
+    <circle cx="180" cy="186" r="92" fill="#A06E50"/>
+    <circle cx="180" cy="186" r="92" fill="none" stroke="#5C3B1F" stroke-width="4" opacity="0.35"/>
+    <ellipse cx="153" cy="160" rx="30" ry="22" fill="#FFFFFF" opacity="0.45"/>
+  </g>
+
+  <!-- Strawberry Milk pearl (right) -->
+  <g>
+    <circle cx="362" cy="222" r="92" fill="#FFAFC3"/>
+    <circle cx="362" cy="222" r="92" fill="none" stroke="#C56F88" stroke-width="4" opacity="0.35"/>
+    <ellipse cx="335" cy="196" rx="30" ry="22" fill="#FFFFFF" opacity="0.5"/>
+  </g>
+
+  <!-- Matcha pearl (bottom) -->
+  <g>
+    <circle cx="262" cy="368" r="92" fill="#A5D791"/>
+    <circle cx="262" cy="368" r="92" fill="none" stroke="#4A6741" stroke-width="4" opacity="0.35"/>
+    <ellipse cx="235" cy="342" rx="30" ry="22" fill="#FFFFFF" opacity="0.45"/>
+  </g>
+</svg>
