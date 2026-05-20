@@ -1,8 +1,20 @@
--- Day 1 placeholder: 2D play-column grid styled per the cozy/bubbly art direction.
--- A 6-wide x 14-tall cell grid centered on screen, aspect-locked so it renders
--- consistently on desktop and mobile. The 12th row is marked as the danger line
--- in a soft coral. Pure visual scaffold — Day 3 rendering will replace the empty
--- cells with glossy pearls.
+-- BoardRenderer (file still named BoardPlaceholder for Rojo continuity).
+--
+-- Renders the local player's board in response to server-fired events:
+--   PieceLocked       : paints the two pearls of a just-locked piece
+--   ActivePieceUpdate : paints the currently-falling pair (Engineer wiring in
+--                       parallel; subscribed defensively so this script works
+--                       before and after that event lands)
+--   ChainCompleted    : TODO needs a board-snapshot payload to repaint
+--                       declaratively after pops + gravity settle. Until then,
+--                       the next PieceLocked event will overwrite stale cells
+--                       where new pieces land.
+--   RoundEnd          : wipes the board for the next round
+--
+-- The board is 6 columns wide x 14 rows tall (12 visible + 2 danger). Game
+-- coordinates: row 1 is the cup floor, row 14 is the cup ceiling. The original
+-- placeholder rendered this inverted (row 1 visually at the top); fixed below
+-- so falling pieces actually appear to fall.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +28,7 @@ local DANGER_ROW = BOARD_VISIBLE_HEIGHT
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local localUserId = tostring(player.UserId)
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BoardPlaceholder"
@@ -67,35 +80,79 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.StartCorner = Enum.StartCorner.BottomLeft
 grid.Parent = container
 
--- Two cell tones alternated per row so the grid reads against the cream
--- container backdrop. Stronger stroke for cell edges so each cell is visible.
 local CELL_TONE_A = Color3.fromRGB(252, 240, 220)
 local CELL_TONE_B = Color3.fromRGB(245, 230, 208)
 
--- Preview pearls placed during the lobby-state placeholder so the empty
--- board reads as a game-in-progress rather than dead space. Replaced
--- wholesale once Day 4's real renderer takes over.
-local PREVIEW_PEARLS = {
-    { row = 1, col = 1, color = "PearlBrown" },
-    { row = 1, col = 2, color = "PearlPink" },
-    { row = 1, col = 4, color = "PearlGreen" },
-    { row = 1, col = 5, color = "PearlPink" },
-    { row = 2, col = 1, color = "PearlPink" },
-    { row = 2, col = 4, color = "PearlBrown" },
-    { row = 2, col = 5, color = "PearlBrown" },
-    { row = 3, col = 4, color = "PearlGreen" },
-    { row = 3, col = 5, color = "PearlWhite" },
-}
+-- LayoutOrder formula: with StartCorner.BottomLeft, lower LayoutOrder sits at
+-- the visual bottom. Game row 1 (cup floor) maps to LayoutOrder col..col+5,
+-- game row 14 (cup ceiling) maps to LayoutOrder 79..84. Pieces fall from top
+-- to bottom visually, matching the cup metaphor.
+local function layoutOrderFor(row, col)
+    return (row - 1) * BOARD_WIDTH + col
+end
 
-local function addPreviewPearl(cell, colorKey)
+local cellsByPos = {}
+local pearlByPos = {}
+
+local function posKey(row, col)
+    return row .. "_" .. col
+end
+
+local function colorForServerName(name)
+    -- Server sends "Brown" / "Pink" / "Green" / "White" / "Garbage". Map to
+    -- the UIConstants palette tokens.
+    if name == "Brown" then return UIConstants.Colors.PearlBrown
+    elseif name == "Pink" then return UIConstants.Colors.PearlPink
+    elseif name == "Green" then return UIConstants.Colors.PearlGreen
+    elseif name == "White" then return UIConstants.Colors.PearlWhite
+    elseif name == "Garbage" then return UIConstants.Colors.GarbageBlock or UIConstants.Colors.PearlWhite
+    end
+    return UIConstants.Colors.PearlWhite
+end
+
+local function makeCell(row, col, isDanger)
+    local cell = Instance.new("Frame")
+    cell.Name = ("Cell_%d_%d"):format(row, col)
+    if isDanger then
+        cell.BackgroundColor3 = UIConstants.Colors.GarbageWarning
+        cell.BackgroundTransparency = 0.45
+    else
+        cell.BackgroundColor3 = (row % 2 == 0) and CELL_TONE_A or CELL_TONE_B
+        cell.BackgroundTransparency = 0.35
+    end
+    cell.BorderSizePixel = 0
+    cell.LayoutOrder = layoutOrderFor(row, col)
+    cell.Parent = container
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Cell
+    corner.Parent = cell
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = UIConstants.Colors.StrokeSoft
+    stroke.Transparency = 0.25
+    stroke.Parent = cell
+
+    cellsByPos[posKey(row, col)] = cell
+    return cell
+end
+
+for row = 1, BOARD_TOTAL_HEIGHT do
+    for col = 1, BOARD_WIDTH do
+        makeCell(row, col, row == DANGER_ROW)
+    end
+end
+
+local function buildPearl(parent, color, isActive)
     local p = Instance.new("Frame")
-    p.Name = "PreviewPearl"
+    p.Name = isActive and "ActivePearl" or "LockedPearl"
     p.Size = UDim2.fromScale(0.82, 0.82)
     p.Position = UDim2.fromScale(0.5, 0.5)
     p.AnchorPoint = Vector2.new(0.5, 0.5)
-    p.BackgroundColor3 = UIConstants.Colors[colorKey]
+    p.BackgroundColor3 = color
     p.BorderSizePixel = 0
-    p.Parent = cell
+    p.Parent = parent
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UIConstants.Corners.Pearl
@@ -103,8 +160,10 @@ local function addPreviewPearl(cell, colorKey)
 
     local pearlStroke = Instance.new("UIStroke")
     pearlStroke.Color = UIConstants.Colors.StrokeWarm
-    pearlStroke.Thickness = 1
-    pearlStroke.Transparency = 0.45
+    -- Active pearls get a slightly heavier stroke so the player can tell which
+    -- piece is currently controllable vs already locked.
+    pearlStroke.Thickness = isActive and 1.5 or 1
+    pearlStroke.Transparency = isActive and 0.25 or 0.45
     pearlStroke.Parent = p
 
     local highlight = Instance.new("Frame")
@@ -120,45 +179,108 @@ local function addPreviewPearl(cell, colorKey)
     local highlightCorner = Instance.new("UICorner")
     highlightCorner.CornerRadius = UIConstants.Corners.Pearl
     highlightCorner.Parent = highlight
+
+    return p
 end
 
-local previewByPos = {}
-for _, entry in PREVIEW_PEARLS do
-    previewByPos[entry.row .. "_" .. entry.col] = entry.color
-end
-
-local function makeCell(row, col, isDanger)
-    local cell = Instance.new("Frame")
-    cell.Name = ("Cell_%d_%d"):format(row, col)
-    if isDanger then
-        cell.BackgroundColor3 = UIConstants.Colors.GarbageWarning
-        cell.BackgroundTransparency = 0.45
-    else
-        cell.BackgroundColor3 = (row % 2 == 0) and CELL_TONE_A or CELL_TONE_B
-        cell.BackgroundTransparency = 0.35
+local function paintPearl(row, col, serverColorName, kind)
+    if row < 1 or row > BOARD_TOTAL_HEIGHT or col < 1 or col > BOARD_WIDTH then
+        return
     end
-    cell.BorderSizePixel = 0
-    cell.LayoutOrder = (BOARD_TOTAL_HEIGHT - row) * BOARD_WIDTH + col
-    cell.Parent = container
+    local cell = cellsByPos[posKey(row, col)]
+    if not cell then return end
+    local existing = pearlByPos[posKey(row, col)]
+    if existing and existing.pearl then existing.pearl:Destroy() end
+    local pearl = buildPearl(cell, colorForServerName(serverColorName), kind == "active")
+    pearlByPos[posKey(row, col)] = { pearl = pearl, kind = kind }
+end
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UIConstants.Corners.Cell
-    corner.Parent = cell
+local function clearPearl(row, col)
+    local key = posKey(row, col)
+    local existing = pearlByPos[key]
+    if existing and existing.pearl then existing.pearl:Destroy() end
+    pearlByPos[key] = nil
+end
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1
-    stroke.Color = UIConstants.Colors.StrokeSoft
-    stroke.Transparency = 0.25
-    stroke.Parent = cell
-
-    local previewKey = previewByPos[row .. "_" .. col]
-    if previewKey and not isDanger then
-        addPreviewPearl(cell, previewKey)
+local function clearActivePearls()
+    for key, entry in pairs(pearlByPos) do
+        if entry.kind == "active" then
+            if entry.pearl then entry.pearl:Destroy() end
+            pearlByPos[key] = nil
+        end
     end
 end
 
-for row = 1, BOARD_TOTAL_HEIGHT do
-    for col = 1, BOARD_WIDTH do
-        makeCell(row, col, row == DANGER_ROW)
+local function clearAll()
+    for key, entry in pairs(pearlByPos) do
+        if entry.pearl then entry.pearl:Destroy() end
+        pearlByPos[key] = nil
     end
 end
+
+-- Partner-offset mirrors GameState.partnerOffset so the client can paint both
+-- pearls of an active piece from {anchorRow, anchorCol, orientation, colors}.
+-- 0: partner above (dr=+1, dc=0), 1: partner right (0,+1), 2: below (-1,0),
+-- 3: left (0,-1).
+local function partnerOffset(orientation)
+    if orientation == 0 then return 1, 0
+    elseif orientation == 1 then return 0, 1
+    elseif orientation == 2 then return -1, 0
+    else return 0, -1
+    end
+end
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+if not Remotes then
+    warn("[BoardRenderer] Remotes folder missing; renderer will stay static")
+    return
+end
+
+local pieceLockedRemote = Remotes:WaitForChild("PieceLocked", 10)
+if pieceLockedRemote then
+    pieceLockedRemote.OnClientEvent:Connect(function(event)
+        if tostring(event.playerId) ~= localUserId then return end
+        clearPearl(event.aRow, event.aCol)
+        clearPearl(event.bRow, event.bCol)
+        paintPearl(event.aRow, event.aCol, event.a, "locked")
+        paintPearl(event.bRow, event.bCol, event.b, "locked")
+    end)
+end
+
+-- ActivePieceUpdate is being added by Engineer in parallel. Hook defensively
+-- so this script works both before and after that remote ships.
+local function tryHookActivePiece()
+    local remote = Remotes:FindFirstChild("ActivePieceUpdate")
+    if not remote then return end
+    remote.OnClientEvent:Connect(function(event)
+        if tostring(event.playerId) ~= localUserId then return end
+        clearActivePearls()
+        local anchorRow = event.position and event.position.anchorRow or event.anchorRow
+        local anchorCol = event.position and event.position.anchorCol or event.anchorCol
+        local orientation = event.orientation or 0
+        if not anchorRow or not anchorCol then return end
+        local dr, dc = partnerOffset(orientation)
+        local aColor = (event.colors and event.colors.pearlA) or event.a
+        local bColor = (event.colors and event.colors.pearlB) or event.b
+        if aColor then paintPearl(anchorRow, anchorCol, aColor, "active") end
+        if bColor then paintPearl(anchorRow + dr, anchorCol + dc, bColor, "active") end
+    end)
+end
+tryHookActivePiece()
+Remotes.ChildAdded:Connect(function(child)
+    if child.Name == "ActivePieceUpdate" then tryHookActivePiece() end
+end)
+
+local roundEndRemote = Remotes:WaitForChild("RoundEnd", 10)
+if roundEndRemote then
+    roundEndRemote.OnClientEvent:Connect(function(_event)
+        clearAll()
+    end)
+end
+
+-- TODO: ChainCompleted needs a popped-cells list or a board snapshot in its
+-- payload to repaint declaratively after pops + gravity settle. Pending the
+-- contract update from Engineer. Until then, chains leave their pre-pop pearls
+-- visible; subsequent PieceLocked events overwrite the cells where new pieces
+-- land, but mid-chain pops will linger as ghost pearls. The score + chain HUD
+-- reflect the chain landing even though the board renderer is stale.
