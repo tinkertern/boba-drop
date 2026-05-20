@@ -115,7 +115,6 @@ local function makeButton(name, text, anchorX, primary)
     scale.Scale = 1
     scale.Parent = btn
 
-    btn:GetPropertyChangedSignal("MouseButton1Click")
     return btn, scale
 end
 
