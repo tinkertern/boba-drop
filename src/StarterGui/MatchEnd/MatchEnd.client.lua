@@ -141,9 +141,20 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
 if not remotes then
     return
 end
-local rematchRemote = remotes:WaitForChild(Events.Names.RematchRequest, 30)
-local leaveRemote = remotes:WaitForChild(Events.Names.LeaveMatch, 30)
-local matchEndRemote = remotes:WaitForChild(Events.Names.MatchEnd, 30)
+
+-- Day 3's Events.lua adds RematchRequest + LeaveMatch. If we're running
+-- against the Day-1 subset, those names are nil; bail silently rather
+-- than passing nil to WaitForChild.
+local rematchName = Events.Names.RematchRequest
+local leaveName = Events.Names.LeaveMatch
+local matchEndName = Events.Names.MatchEnd
+if not (rematchName and leaveName and matchEndName) then
+    return
+end
+
+local rematchRemote = remotes:WaitForChild(rematchName, 30)
+local leaveRemote = remotes:WaitForChild(leaveName, 30)
+local matchEndRemote = remotes:WaitForChild(matchEndName, 30)
 if not (rematchRemote and leaveRemote and matchEndRemote) then
     return
 end
