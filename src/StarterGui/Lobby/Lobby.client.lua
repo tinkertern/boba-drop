@@ -184,15 +184,19 @@ local queuePillVisible = true
 local forceShow = false
 
 local function applyVisibility()
+    -- forceShow is the explicit "I want to see the tutorial right now" signal
+    -- from the ? button, and it has to win over the queue-pill auto-hide.
+    -- Otherwise pressing ? while in the queue (i.e. basically always in the
+    -- lobby) does nothing, because queuePillVisible would short-circuit first.
+    if forceShow then
+        card.Visible = true
+        return
+    end
     -- Tutorial card auto-hides while the queue pill is on-screen so the
     -- two cards never compete for attention. Re-shows once the pill slides
     -- away, unless the player has already dismissed the tutorial.
     if queuePillVisible then
         card.Visible = false
-        return
-    end
-    if forceShow then
-        card.Visible = true
         return
     end
     card.Visible = not player:GetAttribute(ATTRIBUTE)
