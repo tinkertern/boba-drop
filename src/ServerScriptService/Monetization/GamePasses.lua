@@ -8,9 +8,8 @@ local Players = game:GetService("Players")
 local GamePasses = {}
 GamePasses.__index = GamePasses
 
--- TODO: replace with the real Game Pass ID once Sarah creates "Premium Themes Pack"
--- on create.roblox.com -> Monetization -> Game Passes (priced at 99 Robux).
-GamePasses.PREMIUM_THEMES_PACK_ID = 0
+-- Premium Themes Pack — created on create.roblox.com 2026-05-19, 99 Robux.
+GamePasses.PREMIUM_THEMES_PACK_ID = 1846258540
 
 function GamePasses.new()
     local self = setmetatable({}, GamePasses)
@@ -42,12 +41,6 @@ function GamePasses:_setup()
 end
 
 function GamePasses:_cacheOwnership(player, gamePassId)
-    if gamePassId == 0 then
-        -- Pass not yet created; skip the live check to avoid an API error.
-        self._ownership[player.UserId] = self._ownership[player.UserId] or {}
-        self._ownership[player.UserId][gamePassId] = false
-        return
-    end
     self._ownership[player.UserId] = self._ownership[player.UserId] or {}
     local ok, owned = pcall(function()
         return MarketplaceService:UserOwnsGamePassAsync(player.UserId, gamePassId)
