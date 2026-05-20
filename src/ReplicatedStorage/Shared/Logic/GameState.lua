@@ -15,6 +15,8 @@ function GameState.new(ctx)
     self._roundNumber = 0
     self._roundsWon = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
     self._scores = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 } -- per-round
+    self._pendingGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
+    self._placementsUntilGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
     self._boards = {}
     self._subscribers = {}
     self._matchWinner = nil
@@ -79,9 +81,46 @@ function GameState:forfeitRound(loserId, reason)
     self:_endRound(winner, loserId, reason)
 end
 
+function GameState:pendingGarbage(playerId) return self._pendingGarbage[playerId] end
+function GameState:placementsUntilGarbage(playerId) return self._placementsUntilGarbage[playerId] end
+
+function GameState:queueGarbage(targetPlayerId, cubes)
+    self._pendingGarbage[targetPlayerId] += cubes
+    self._placementsUntilGarbage[targetPlayerId] = 2
+    self:_dispatch("onGarbageIncoming", {
+        playerId = targetPlayerId,
+        cubes = cubes,
+        dropsInPlacements = 2,
+    })
+end
+
+function GameState:applyOutgoingChain(senderPlayerId, outgoingCubes)
+    -- First subtract from sender's incoming queue, then any remainder goes to opponent
+    local pending = self._pendingGarbage[senderPlayerId]
+    if pending > 0 then
+        local canceled = math.min(pending, outgoingCubes)
+        self._pendingGarbage[senderPlayerId] -= canceled
+        outgoingCubes -= canceled
+        self:_dispatch("onGarbageApplied", {
+            playerId = senderPlayerId,
+            cubes = 0,
+            canceledByCounter = canceled,
+        })
+    end
+    if outgoingCubes > 0 then
+        local opponent = self:_otherPlayer(senderPlayerId)
+        self:queueGarbage(opponent, outgoingCubes)
+    end
+end
+
 function GameState:declareDraw()
     assert(self._phase == "playing", "declareDraw only valid during 'playing'")
     -- draw does not advance match; redo the round
+    -- Clear queued garbage on both sides (per spec) BEFORE dispatch+decrement
+    for _, p in self._players do
+        self._pendingGarbage[p] = 0
+        self._placementsUntilGarbage[p] = 0
+    end
     self:_dispatch("onRoundDraw", { round = self._roundNumber })
     -- decrement round number so startRound brings us back to same round number with fresh seed
     self._roundNumber -= 1

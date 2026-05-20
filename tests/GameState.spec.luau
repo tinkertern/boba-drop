@@ -81,4 +81,41 @@ t.describe("GameState", function()
     end)
 end)
 
+t.describe("GameState garbage", function()
+    t.it("queues incoming garbage with a 2-placement delay", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 6) -- P1 sent a 4-chain → P2 gets 6 cubes
+        t.assertEq(gs:pendingGarbage("P2"), 6)
+        t.assertEq(gs:placementsUntilGarbage("P2"), 2)
+    end)
+
+    t.it("counter cancellation subtracts outgoing from incoming", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 6) -- P2 has 6 incoming
+        gs:applyOutgoingChain("P2", 3) -- P2 then 2-chains, sends 1 cube
+        t.assertEq(gs:pendingGarbage("P2"), 3) -- 6 - 3 = 3 remaining
+    end)
+
+    t.it("counter that exceeds incoming sends remainder to opponent", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 3) -- P2 has 3 incoming
+        gs:applyOutgoingChain("P2", 12) -- P2's 5-chain sends 12 cubes
+        t.assertEq(gs:pendingGarbage("P2"), 0) -- all canceled
+        t.assertEq(gs:pendingGarbage("P1"), 9) -- 12 - 3 = 9 to opponent
+    end)
+
+    t.it("drawn round clears queued garbage on both sides", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P1", 5)
+        gs:queueGarbage("P2", 3)
+        gs:declareDraw()
+        t.assertEq(gs:pendingGarbage("P1"), 0)
+        t.assertEq(gs:pendingGarbage("P2"), 0)
+    end)
+end)
+
 t.summary()
