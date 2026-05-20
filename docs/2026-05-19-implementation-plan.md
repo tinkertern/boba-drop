@@ -1900,4 +1900,1101 @@ DM `@Producer` at 5:45pm: "Write today's daily-log.md entry."
 
 ---
 
-(Day 3 + Day 4 follow.)
+## Day 3 — Thu 2026-05-21: Networking + 1v1 + Disconnect (~6h)
+
+By end of day: full 1v1 match playable end-to-end. Garbage transfers, counter cancellation works, disconnect/AFK/draw paths verified.
+
+### Task 3.1: Remotes — RemoteEvent Instances
+
+**Files:**
+- Create: `src/ReplicatedStorage/Remotes/InputMove.model.json`
+- Create: `src/ReplicatedStorage/Remotes/InputRotate.model.json`
+- Create: `src/ReplicatedStorage/Remotes/InputSoftDrop.model.json`
+- Create: `src/ReplicatedStorage/Remotes/InputHardDrop.model.json`
+- Create: `src/ReplicatedStorage/Remotes/PieceLocked.model.json`
+- Create: `src/ReplicatedStorage/Remotes/ChainCompleted.model.json`
+- Create: `src/ReplicatedStorage/Remotes/GarbageIncoming.model.json`
+- Create: `src/ReplicatedStorage/Remotes/GarbageApplied.model.json`
+- Create: `src/ReplicatedStorage/Remotes/RoundEnd.model.json`
+- Create: `src/ReplicatedStorage/Remotes/MatchEnd.model.json`
+- Create: `src/ReplicatedStorage/Remotes/RematchRequest.model.json`
+- Create: `src/ReplicatedStorage/Remotes/LeaveMatch.model.json`
+
+- [ ] **Step 1: Write the Rojo model template (single file shown; create one per event)**
+
+Example: `src/ReplicatedStorage/Remotes/InputMove.model.json`
+
+```json
+{
+  "className": "RemoteEvent",
+  "name": "InputMove"
+}
+```
+
+Repeat with each event name as the `name` field. Use this exact pattern for all 12 files. The 12 events:
+
+| File | className |
+|---|---|
+| `InputMove.model.json` | RemoteEvent |
+| `InputRotate.model.json` | RemoteEvent |
+| `InputSoftDrop.model.json` | RemoteEvent |
+| `InputHardDrop.model.json` | RemoteEvent |
+| `PieceLocked.model.json` | RemoteEvent |
+| `ChainCompleted.model.json` | RemoteEvent |
+| `GarbageIncoming.model.json` | RemoteEvent |
+| `GarbageApplied.model.json` | RemoteEvent |
+| `RoundEnd.model.json` | RemoteEvent |
+| `MatchEnd.model.json` | RemoteEvent |
+| `RematchRequest.model.json` | RemoteEvent |
+| `LeaveMatch.model.json` | RemoteEvent |
+
+- [ ] **Step 2: Verify Rojo sync**
+
+In Studio (with Rojo connected), open Explorer → ReplicatedStorage → there should be a Remotes folder with 12 RemoteEvent children, each named per the table above.
+
+- [ ] **Step 3: Update Events.lua with the server→client event list**
+
+Edit `src/ReplicatedStorage/Shared/Events.lua` to add payload-shape comments for each event (already partially populated; flesh out):
+
+```lua
+-- src/ReplicatedStorage/Shared/Events.lua
+local Events = {}
+
+Events.Names = {
+    -- Client → Server
+    InputMove = "InputMove",       -- payload: { direction = "left" | "right" }
+    InputRotate = "InputRotate",   -- payload: { direction = "cw" | "ccw" }
+    InputSoftDrop = "InputSoftDrop", -- payload: { held = boolean }
+    InputHardDrop = "InputHardDrop", -- payload: {}
+    RematchRequest = "RematchRequest", -- payload: {}
+    LeaveMatch = "LeaveMatch",     -- payload: {}
+
+    -- Server → Client
+    PieceLocked = "PieceLocked",   -- payload: { playerId, position = {row, col}, color = string }
+    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, isLocal }
+    GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
+    GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number }
+    RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }
+    MatchEnd = "MatchEnd",         -- payload: { winner, finalScores = { [pid] = number }, bestChain = { [pid] = number } }
+}
+
+return Events
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ReplicatedStorage/Remotes/ src/ReplicatedStorage/Shared/Events.lua
+git commit -m "Day 3: Remotes as .model.json + Events.lua payload-shape contract"
+git push
+```
+
+### Task 3.2: Main.server.lua bootstrap
+
+**Files:**
+- Create: `src/ServerScriptService/Main.server.lua`
+
+- [ ] **Step 1: Write Main.server.lua**
+
+```lua
+-- src/ServerScriptService/Main.server.lua
+local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local RoomManager = require(ServerScriptService.Networking.RoomManager)
+local DisconnectHandler = require(ServerScriptService.Networking.DisconnectHandler)
+local StateSync = require(ServerScriptService.Networking.StateSync)
+
+print("[Main.server] Boba Drop server starting...")
+
+local roomManager = RoomManager.new()
+local disconnectHandler = DisconnectHandler.new(roomManager)
+local stateSync = StateSync.new(roomManager)
+
+Players.PlayerAdded:Connect(function(player)
+    roomManager:enqueuePlayer(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    disconnectHandler:onPlayerLeaving(player)
+end)
+
+print("[Main.server] Boba Drop server ready")
+```
+
+- [ ] **Step 2: Sanity — don't run until RoomManager exists in 3.3**
+
+The require will fail until RoomManager exists. That's OK — proceed to 3.3.
+
+### Task 3.3: RoomManager.lua — matchmaking + session lifecycle
+
+**Files:**
+- Create: `src/ServerScriptService/Networking/RoomManager.lua`
+
+- [ ] **Step 1: Write RoomManager.lua**
+
+```lua
+-- src/ServerScriptService/Networking/RoomManager.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local GameState = require(ReplicatedStorage.Shared.Logic.GameState)
+local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
+local Events = require(ReplicatedStorage.Shared.Events)
+
+local RoomManager = {}
+RoomManager.__index = RoomManager
+
+function RoomManager.new()
+    local self = setmetatable({}, RoomManager)
+    self._queue = {}      -- list of Player Instances waiting
+    self._rooms = {}      -- list of { players = {p1, p2}, gameState = GameState, phase = "playing" | "postMatch" }
+    self._playerRoom = {} -- playerId → room
+    self._rematchVotes = {} -- room → { [playerId] = boolean }
+    return self
+end
+
+function RoomManager:enqueuePlayer(player)
+    table.insert(self._queue, player)
+    print("[RoomManager] enqueued " .. player.Name .. " (queue size " .. #self._queue .. ")")
+    self:_tryMatchmake()
+end
+
+function RoomManager:_tryMatchmake()
+    if #self._queue >= 2 then
+        local p1 = table.remove(self._queue, 1)
+        local p2 = table.remove(self._queue, 1)
+        self:_startRoom(p1, p2)
+    end
+end
+
+function RoomManager:_startRoom(p1, p2)
+    local seed = math.random(1, 1000000)
+    local gs = GameState.new({ players = { tostring(p1.UserId), tostring(p2.UserId) }, seed = seed })
+    local room = { players = { p1, p2 }, gameState = gs, phase = "playing" }
+    table.insert(self._rooms, room)
+    self._playerRoom[p1.UserId] = room
+    self._playerRoom[p2.UserId] = room
+    self._rematchVotes[room] = {}
+    gs:startRound()
+    print("[RoomManager] room started: " .. p1.Name .. " vs " .. p2.Name)
+end
+
+function RoomManager:roomOf(player)
+    return self._playerRoom[player.UserId]
+end
+
+function RoomManager:applyInput(player, input)
+    -- Generic input application. The actual input-to-piece-state translation
+    -- happens inside the GameState's per-player Board, driven server-side.
+    -- For Day 3 MVP, input fires a corresponding GameState method; details
+    -- depend on whether the round is "playing" — drop inputs otherwise.
+    local room = self:roomOf(player)
+    if not room or room.phase ~= "playing" then return end
+    -- The GameState exposes input hooks; we forward.
+    if room.gameState.applyInput then
+        room.gameState:applyInput(tostring(player.UserId), input)
+    end
+end
+
+-- Mid-rematch-disconnect routing entry point. Called by DisconnectHandler.
+function RoomManager:treatAsLeave(player)
+    local room = self:roomOf(player)
+    if not room or room.phase ~= "postMatch" then return false end
+    -- Treat as Leave: end rematch flow, return both players to lobby
+    print("[RoomManager] " .. player.Name .. " treated as Leave during rematch window")
+    self:_closeRoom(room)
+    return true
+end
+
+function RoomManager:registerRematchVote(player, accept)
+    local room = self:roomOf(player)
+    if not room or room.phase ~= "postMatch" then return end
+    if accept then
+        self._rematchVotes[room][player.UserId] = true
+        if self._rematchVotes[room][room.players[1].UserId] and self._rematchVotes[room][room.players[2].UserId] then
+            -- Both accepted — start new match
+            print("[RoomManager] rematch accepted — restarting room")
+            local seed = math.random(1, 1000000)
+            room.gameState = GameState.new({
+                players = { tostring(room.players[1].UserId), tostring(room.players[2].UserId) },
+                seed = seed,
+            })
+            room.phase = "playing"
+            self._rematchVotes[room] = {}
+            room.gameState:startRound()
+        end
+    else
+        -- Leave
+        self:_closeRoom(room)
+    end
+end
+
+function RoomManager:_closeRoom(room)
+    for _, p in room.players do
+        self._playerRoom[p.UserId] = nil
+        if p.Parent then
+            table.insert(self._queue, p)
+        end
+    end
+    self._rematchVotes[room] = nil
+    for i, r in self._rooms do
+        if r == room then table.remove(self._rooms, i); break end
+    end
+    print("[RoomManager] room closed, players re-queued where possible")
+    self:_tryMatchmake()
+end
+
+function RoomManager:onMatchEnd(room)
+    -- Called by StateSync subscriber when GameState fires onMatchEnd
+    room.phase = "postMatch"
+    -- 15s rematch window started by client; server cleans up after timeout
+    task.delay(Constants.REMATCH_WINDOW, function()
+        if room.phase == "postMatch" then
+            print("[RoomManager] rematch window expired — closing room")
+            self:_closeRoom(room)
+        end
+    end)
+end
+
+return RoomManager
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/ServerScriptService/Networking/RoomManager.lua src/ServerScriptService/Main.server.lua
+git commit -m "Day 3: RoomManager (session lifecycle, rematch flow, treatAsLeave) + Main bootstrap"
+git push
+```
+
+### Task 3.4: StateSync.lua — subscribes to GameState, fires RemoteEvents
+
+**Files:**
+- Create: `src/ServerScriptService/Networking/StateSync.lua`
+
+- [ ] **Step 1: Write StateSync.lua**
+
+```lua
+-- src/ServerScriptService/Networking/StateSync.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Events = require(ReplicatedStorage.Shared.Events)
+
+local StateSync = {}
+StateSync.__index = StateSync
+
+local function getRemote(name)
+    return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(name)
+end
+
+function StateSync.new(roomManager)
+    local self = setmetatable({}, StateSync)
+    self._roomManager = roomManager
+    self._chainRemote = getRemote(Events.Names.ChainCompleted)
+    self._garbageInRemote = getRemote(Events.Names.GarbageIncoming)
+    self._garbageAppliedRemote = getRemote(Events.Names.GarbageApplied)
+    self._roundEndRemote = getRemote(Events.Names.RoundEnd)
+    self._matchEndRemote = getRemote(Events.Names.MatchEnd)
+    self:_attachToRooms()
+    return self
+end
+
+function StateSync:_findPlayer(userIdStr)
+    for _, p in Players:GetPlayers() do
+        if tostring(p.UserId) == userIdStr then return p end
+    end
+    return nil
+end
+
+-- The RoomManager calls this when a new room starts so we wire subscriptions.
+function StateSync:wireRoom(room)
+    local gs = room.gameState
+    gs:subscribe("onChainResolved", function(event)
+        local localPlayer = self:_findPlayer(event.playerId)
+        if not localPlayer then return end
+        -- Fire to both players, marking isLocal appropriately
+        for _, p in room.players do
+            self._chainRemote:FireClient(p, {
+                playerId = event.playerId,
+                chainLength = event.chainLength,
+                totalPopped = event.totalPopped,
+                isLocal = (tostring(p.UserId) == event.playerId),
+            })
+        end
+    end)
+    gs:subscribe("onGarbageIncoming", function(event)
+        for _, p in room.players do
+            self._garbageInRemote:FireClient(p, event)
+        end
+    end)
+    gs:subscribe("onGarbageApplied", function(event)
+        for _, p in room.players do
+            self._garbageAppliedRemote:FireClient(p, event)
+        end
+    end)
+    gs:subscribe("onRoundEnd", function(event)
+        for _, p in room.players do
+            self._roundEndRemote:FireClient(p, event)
+        end
+    end)
+    gs:subscribe("onMatchEnd", function(event)
+        for _, p in room.players do
+            self._matchEndRemote:FireClient(p, event)
+        end
+        self._roomManager:onMatchEnd(room)
+    end)
+end
+
+function StateSync:_attachToRooms()
+    -- Poll-style: every 0.5s scan for newly-created rooms that haven't been wired
+    -- (alternative: have RoomManager emit a roomCreated event; this is simpler for Day 3)
+    task.spawn(function()
+        local wired = {}
+        while true do
+            for _, room in self._roomManager._rooms do
+                if not wired[room] then
+                    self:wireRoom(room)
+                    wired[room] = true
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+return StateSync
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/ServerScriptService/Networking/StateSync.lua
+git commit -m "Day 3: StateSync subscribes to GameState pub/sub, fires RemoteEvents to both players"
+git push
+```
+
+### Task 3.5: DisconnectHandler.lua — phase-aware routing
+
+**Files:**
+- Create: `src/ServerScriptService/Networking/DisconnectHandler.lua`
+
+- [ ] **Step 1: Write DisconnectHandler.lua**
+
+```lua
+-- src/ServerScriptService/Networking/DisconnectHandler.lua
+local Constants = require(game:GetService("ReplicatedStorage").Shared.Logic.Constants)
+
+local DisconnectHandler = {}
+DisconnectHandler.__index = DisconnectHandler
+
+function DisconnectHandler.new(roomManager)
+    local self = setmetatable({}, DisconnectHandler)
+    self._roomManager = roomManager
+    self._graceTasks = {} -- playerId → task handle
+    return self
+end
+
+function DisconnectHandler:onPlayerLeaving(player)
+    local room = self._roomManager:roomOf(player)
+    if not room then return end
+
+    if room.phase == "playing" then
+        -- In-round disconnect: 10s grace period, then forfeit
+        local pid = player.UserId
+        self._graceTasks[pid] = task.delay(Constants.DISCONNECT_GRACE, function()
+            -- After grace, forfeit the round
+            if room.gameState and room.gameState:phase() == "playing" then
+                room.gameState:forfeitRound(tostring(pid), "disconnect")
+            end
+            self._graceTasks[pid] = nil
+        end)
+    elseif room.phase == "postMatch" then
+        -- Mid-rematch-window disconnect: treat as Leave
+        self._roomManager:treatAsLeave(player)
+    end
+end
+
+-- Per-piece AFK timer (called from RoomManager when a piece spawns).
+-- Cleared when the piece locks.
+function DisconnectHandler:startAfkTimer(player, onTimeout)
+    local pid = player.UserId
+    if self._graceTasks[pid] then task.cancel(self._graceTasks[pid]) end
+    self._graceTasks[pid] = task.delay(Constants.AFK_PIECE_TIMEOUT, function()
+        onTimeout()
+        self._graceTasks[pid] = nil
+    end)
+end
+
+function DisconnectHandler:clearAfkTimer(player)
+    local pid = player.UserId
+    if self._graceTasks[pid] then
+        task.cancel(self._graceTasks[pid])
+        self._graceTasks[pid] = nil
+    end
+end
+
+return DisconnectHandler
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/ServerScriptService/Networking/DisconnectHandler.lua
+git commit -m "Day 3: DisconnectHandler with phase-aware routing (in-round forfeit, post-match treatAsLeave)"
+git push
+```
+
+### Task 3.6: GameState garbage queue + counter cancellation
+
+**Files:**
+- Modify: `src/ReplicatedStorage/Shared/Logic/GameState.lua` (extend)
+- Modify: `tests/GameState.spec.luau` (add 3 tests)
+
+- [ ] **Step 1: Add garbage-queue tests**
+
+Append to `tests/GameState.spec.luau` before `t.summary()`:
+
+```lua
+t.describe("GameState garbage", function()
+    t.it("queues incoming garbage with a 2-placement delay", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 6) -- P1 sent a 4-chain → P2 gets 6 cubes
+        t.assertEq(gs:pendingGarbage("P2"), 6)
+        t.assertEq(gs:placementsUntilGarbage("P2"), 2)
+    end)
+
+    t.it("counter cancellation subtracts outgoing from incoming", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 6) -- P2 has 6 incoming
+        gs:applyOutgoingChain("P2", 3) -- P2 then 2-chains, sends 1 cube
+        t.assertEq(gs:pendingGarbage("P2"), 3) -- 6 - 3 = 3 remaining
+    end)
+
+    t.it("counter that exceeds incoming sends remainder to opponent", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P2", 3) -- P2 has 3 incoming
+        gs:applyOutgoingChain("P2", 12) -- P2's 5-chain sends 12 cubes
+        t.assertEq(gs:pendingGarbage("P2"), 0) -- all canceled
+        t.assertEq(gs:pendingGarbage("P1"), 9) -- 12 - 3 = 9 to opponent
+    end)
+
+    t.it("drawn round clears queued garbage on both sides", function()
+        local gs = newState()
+        gs:startRound()
+        gs:queueGarbage("P1", 5)
+        gs:queueGarbage("P2", 3)
+        gs:declareDraw()
+        t.assertEq(gs:pendingGarbage("P1"), 0)
+        t.assertEq(gs:pendingGarbage("P2"), 0)
+    end)
+end)
+```
+
+- [ ] **Step 2: Extend GameState.lua**
+
+Add to `GameState.new` initializer (after `_scores`):
+
+```lua
+    self._pendingGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
+    self._placementsUntilGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
+```
+
+Add methods (anywhere before `return GameState`):
+
+```lua
+function GameState:pendingGarbage(playerId) return self._pendingGarbage[playerId] end
+function GameState:placementsUntilGarbage(playerId) return self._placementsUntilGarbage[playerId] end
+
+function GameState:queueGarbage(targetPlayerId, cubes)
+    self._pendingGarbage[targetPlayerId] += cubes
+    self._placementsUntilGarbage[targetPlayerId] = 2
+    self:_dispatch("onGarbageIncoming", {
+        playerId = targetPlayerId,
+        cubes = cubes,
+        dropsInPlacements = 2,
+    })
+end
+
+function GameState:applyOutgoingChain(senderPlayerId, outgoingCubes)
+    -- First subtract from sender's incoming queue, then any remainder goes to opponent
+    local pending = self._pendingGarbage[senderPlayerId]
+    if pending > 0 then
+        local canceled = math.min(pending, outgoingCubes)
+        self._pendingGarbage[senderPlayerId] -= canceled
+        outgoingCubes -= canceled
+        self:_dispatch("onGarbageApplied", {
+            playerId = senderPlayerId,
+            cubes = 0,
+            canceledByCounter = canceled,
+        })
+    end
+    if outgoingCubes > 0 then
+        local opponent = self:_otherPlayer(senderPlayerId)
+        self:queueGarbage(opponent, outgoingCubes)
+    end
+end
+```
+
+Modify `declareDraw`:
+
+```lua
+function GameState:declareDraw()
+    assert(self._phase == "playing", "declareDraw only valid during 'playing'")
+    -- Clear queued garbage on both sides (per spec)
+    for _, p in self._players do
+        self._pendingGarbage[p] = 0
+        self._placementsUntilGarbage[p] = 0
+    end
+    self:_dispatch("onRoundDraw", { round = self._roundNumber })
+    self._roundNumber -= 1
+end
+```
+
+- [ ] **Step 3: Run tests, expect pass**
+
+```bash
+lune run tests/GameState.spec.luau
+```
+
+Expected: `12/12 passed (0 failed)` (8 from Day 2 + 4 new).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ReplicatedStorage/Shared/Logic/GameState.lua tests/GameState.spec.luau
+git commit -m "Day 3: GameState garbage queue + counter cancellation + draw-clears-queue"
+git push
+```
+
+### Task 3.7: Lobby UI (Producer)
+
+**Files:**
+- Create: `src/StarterGui/Lobby/Lobby.client.lua`
+
+- [ ] **Step 1: Write Lobby.client.lua**
+
+```lua
+-- src/StarterGui/Lobby/Lobby.client.lua
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService = game:GetService("DataStoreService")
+
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "Lobby"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = UIConstants.ZOrder.RoundBanner
+screenGui.Parent = playerGui
+
+-- Tutorial card (dismiss persisted per-player)
+local function buildTutorialCard()
+    local card = Instance.new("Frame")
+    card.Name = "Tutorial"
+    card.Size = UDim2.fromOffset(320, 110)
+    card.Position = UDim2.fromScale(0.5, 0.20)
+    card.AnchorPoint = Vector2.new(0.5, 0.5)
+    card.BackgroundColor3 = UIConstants.Colors.Background
+    card.BackgroundTransparency = 0.2
+    card.Parent = screenGui
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -32, 1, -16)
+    label.Position = UDim2.fromOffset(16, 8)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextWrapped = true
+    label.Font = UIConstants.Fonts.Tutorial
+    label.TextSize = 16
+    label.Text = "Match 4+ same-color pearls to pop.\nChain pops send ice cubes to your opponent.\nDon't overflow your cup."
+    label.Parent = card
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.fromOffset(24, 24)
+    closeBtn.Position = UDim2.new(1, -28, 0, 4)
+    closeBtn.Text = "X"
+    closeBtn.BackgroundTransparency = 0.4
+    closeBtn.Parent = card
+
+    return card, closeBtn
+end
+
+local tutorialCard, closeBtn = buildTutorialCard()
+
+-- Persist dismiss state
+local ds = DataStoreService:GetDataStore("BobaDrop_TutorialDismissed")
+local key = "u" .. tostring(player.UserId)
+local dismissed = false
+pcall(function()
+    dismissed = ds:GetAsync(key) == true
+end)
+if dismissed then tutorialCard.Visible = false end
+
+closeBtn.MouseButton1Click:Connect(function()
+    tutorialCard.Visible = false
+    pcall(function() ds:SetAsync(key, true) end)
+end)
+-- tap-anywhere-on-card also dismisses
+tutorialCard.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        tutorialCard.Visible = false
+        pcall(function() ds:SetAsync(key, true) end)
+    end
+end)
+
+-- Queue UI
+local queuePanel = Instance.new("Frame")
+queuePanel.Name = "Queue"
+queuePanel.Size = UDim2.fromOffset(280, 80)
+queuePanel.Position = UDim2.fromScale(0.5, 0.55)
+queuePanel.AnchorPoint = Vector2.new(0.5, 0.5)
+queuePanel.BackgroundColor3 = UIConstants.Colors.Background
+queuePanel.BackgroundTransparency = 0.3
+queuePanel.Parent = screenGui
+
+local queueLabel = Instance.new("TextLabel")
+queueLabel.Size = UDim2.new(1, 0, 0.6, 0)
+queueLabel.BackgroundTransparency = 1
+queueLabel.TextColor3 = Color3.new(1, 1, 1)
+queueLabel.Font = UIConstants.Fonts.HUD
+queueLabel.TextSize = 18
+queueLabel.Text = "Searching for opponent…  0s"
+queueLabel.Parent = queuePanel
+
+local cancelBtn = Instance.new("TextButton")
+cancelBtn.Size = UDim2.new(0.45, 0, 0.35, 0)
+cancelBtn.Position = UDim2.new(0.27, 0, 0.62, 0)
+cancelBtn.Text = "Cancel"
+cancelBtn.Parent = queuePanel
+
+local queueStarted = tick()
+local queueActive = true
+task.spawn(function()
+    while queueActive do
+        local elapsed = math.floor(tick() - queueStarted)
+        queueLabel.Text = "Searching for opponent…  " .. elapsed .. "s"
+        if elapsed >= Constants.QUEUE_TIMEOUT then
+            queueLabel.Text = "No opponent yet. Play vs CPU or invite a friend."
+            queueActive = false
+        end
+        task.wait(1)
+    end
+end)
+
+cancelBtn.MouseButton1Click:Connect(function()
+    queueActive = false
+    queueLabel.Text = "Queue canceled"
+    -- TODO Day 4: leave server / return to menu
+end)
+
+-- Themes button (disabled during active queue per spec)
+local themesBtn = Instance.new("TextButton")
+themesBtn.Size = UDim2.fromOffset(120, 36)
+themesBtn.Position = UDim2.new(1, -136, 0, 16)
+themesBtn.AnchorPoint = Vector2.new(0, 0)
+themesBtn.Text = "Themes"
+themesBtn.Parent = screenGui
+
+local function updateThemesEnabled()
+    themesBtn.AutoButtonColor = not queueActive
+    themesBtn.TextColor3 = queueActive and Color3.new(0.5, 0.5, 0.5) or Color3.new(1, 1, 1)
+end
+updateThemesEnabled()
+task.spawn(function()
+    while true do updateThemesEnabled(); task.wait(0.5) end
+end)
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/StarterGui/Lobby/Lobby.client.lua
+git commit -m "Day 3: Lobby UI with persisted tutorial, queue elapsed-timer, themes-disabled-during-queue"
+git push
+```
+
+### Task 3.8: Garbage preview + counter-cancel visual
+
+**Files:**
+- Create: `src/StarterGui/GameUI/GarbagePreview.client.lua`
+- Create: `src/StarterGui/GameUI/CounterCancel.client.lua`
+
+- [ ] **Step 1: Write GarbagePreview.client.lua**
+
+```lua
+-- src/StarterGui/GameUI/GarbagePreview.client.lua
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Events = require(ReplicatedStorage.Shared.Events)
+local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "GarbagePreview"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = UIConstants.ZOrder.GarbageWarning
+gui.Parent = playerGui
+
+local row = Instance.new("Frame")
+row.Size = UDim2.fromOffset(240, 28)
+row.Position = UDim2.fromScale(0.5, 0.05)
+row.AnchorPoint = Vector2.new(0.5, 0.5)
+row.BackgroundTransparency = 1
+row.Parent = gui
+
+local function pulseRow(intensity)
+    local target = math.clamp(intensity, 0, 1)
+    for _, cube in row:GetChildren() do
+        if cube:IsA("Frame") then
+            cube.BackgroundTransparency = 0.2 + (1 - target) * 0.6
+        end
+    end
+end
+
+local function clearRow()
+    for _, c in row:GetChildren() do c:Destroy() end
+end
+
+local function drawCubes(cubes)
+    clearRow()
+    local size = 18
+    local pad = 4
+    for i = 1, math.min(cubes, 12) do
+        local cube = Instance.new("Frame")
+        cube.Size = UDim2.fromOffset(size, size)
+        cube.Position = UDim2.fromOffset((i - 1) * (size + pad), 0)
+        cube.BackgroundColor3 = UIConstants.Colors.GarbageWarning
+        cube.Parent = row
+    end
+    if cubes > 12 then
+        local more = Instance.new("TextLabel")
+        more.Size = UDim2.fromOffset(40, size)
+        more.Position = UDim2.fromOffset(12 * (size + pad), 0)
+        more.BackgroundTransparency = 1
+        more.Text = "+" .. (cubes - 12)
+        more.TextColor3 = UIConstants.Colors.GarbageWarning
+        more.Parent = row
+    end
+end
+
+local incomingRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.GarbageIncoming)
+incomingRemote.OnClientEvent:Connect(function(event)
+    if tostring(event.playerId) ~= tostring(player.UserId) then return end
+    drawCubes(event.cubes)
+    -- pulse animation as drop approaches
+    task.spawn(function()
+        local startedAt = tick()
+        while row.Parent do
+            local elapsed = tick() - startedAt
+            local pulse = (math.sin(elapsed * 6) + 1) * 0.5
+            pulseRow(pulse)
+            task.wait(0.05)
+        end
+    end)
+end)
+
+local appliedRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.GarbageApplied)
+appliedRemote.OnClientEvent:Connect(function(event)
+    if tostring(event.playerId) ~= tostring(player.UserId) then return end
+    -- Remaining garbage = previous cubes - canceled
+    clearRow()
+end)
+```
+
+- [ ] **Step 2: Write CounterCancel.client.lua**
+
+```lua
+-- src/StarterGui/GameUI/CounterCancel.client.lua
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Events = require(ReplicatedStorage.Shared.Events)
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "CounterCancel"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = UIConstants.ZOrder.BlockedFlash
+gui.Parent = playerGui
+
+local blocked = Instance.new("TextLabel")
+blocked.Name = "Blocked"
+-- Rendered in a different screen region than the chain counter (left side, not center)
+blocked.Size = UDim2.fromOffset(220, 60)
+blocked.Position = UDim2.fromScale(0.15, 0.5)
+blocked.AnchorPoint = Vector2.new(0.5, 0.5)
+blocked.BackgroundTransparency = 1
+blocked.Font = UIConstants.Fonts.Score
+blocked.TextSize = 42
+blocked.TextColor3 = UIConstants.Colors.Blocked
+blocked.TextStrokeTransparency = 0.4
+blocked.Text = ""
+blocked.Visible = false
+blocked.Parent = gui
+
+local appliedRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.GarbageApplied)
+appliedRemote.OnClientEvent:Connect(function(event)
+    if tostring(event.playerId) ~= tostring(player.UserId) then return end
+    if (event.canceledByCounter or 0) <= 0 then return end
+    blocked.Text = "BLOCKED!"
+    blocked.Visible = true
+    task.delay(UIConstants.Durations.BlockedFlash, function()
+        blocked.Visible = false
+    end)
+end)
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/StarterGui/GameUI/GarbagePreview.client.lua src/StarterGui/GameUI/CounterCancel.client.lua
+git commit -m "Day 3: GarbagePreview + CounterCancel UI"
+git push
+```
+
+### Task 3.9: Match-end screen + rematch flow
+
+**Files:**
+- Create: `src/StarterGui/MatchEnd/MatchEnd.client.lua`
+
+- [ ] **Step 1: Write MatchEnd.client.lua**
+
+```lua
+-- src/StarterGui/MatchEnd/MatchEnd.client.lua
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Events = require(ReplicatedStorage.Shared.Events)
+local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screen = Instance.new("ScreenGui")
+screen.Name = "MatchEnd"
+screen.ResetOnSpawn = false
+screen.DisplayOrder = UIConstants.ZOrder.RoundBanner
+screen.Parent = playerGui
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.fromOffset(400, 340)
+panel.Position = UDim2.fromScale(0.5, 0.5)
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+panel.BackgroundColor3 = UIConstants.Colors.Background
+panel.BackgroundTransparency = 0.1
+panel.Visible = false
+panel.Parent = screen
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 50)
+title.BackgroundTransparency = 1
+title.Font = UIConstants.Fonts.Score
+title.TextSize = 28
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Parent = panel
+
+local scoreLines = Instance.new("TextLabel")
+scoreLines.Size = UDim2.new(1, -32, 0, 80)
+scoreLines.Position = UDim2.fromOffset(16, 60)
+scoreLines.BackgroundTransparency = 1
+scoreLines.Font = UIConstants.Fonts.HUD
+scoreLines.TextSize = 16
+scoreLines.TextColor3 = Color3.new(1, 1, 1)
+scoreLines.TextXAlignment = Enum.TextXAlignment.Left
+scoreLines.TextYAlignment = Enum.TextYAlignment.Top
+scoreLines.Parent = panel
+
+local countdown = Instance.new("TextLabel")
+countdown.Size = UDim2.new(1, 0, 0, 30)
+countdown.Position = UDim2.fromScale(0, 0.55)
+countdown.BackgroundTransparency = 1
+countdown.Font = UIConstants.Fonts.HUD
+countdown.TextSize = 14
+countdown.TextColor3 = Color3.new(0.9, 0.9, 0.9)
+countdown.Parent = panel
+
+local opponentStatus = Instance.new("TextLabel")
+opponentStatus.Size = UDim2.new(1, 0, 0, 22)
+opponentStatus.Position = UDim2.fromScale(0, 0.65)
+opponentStatus.BackgroundTransparency = 1
+opponentStatus.Font = UIConstants.Fonts.HUD
+opponentStatus.TextSize = 14
+opponentStatus.TextColor3 = Color3.new(0.85, 0.85, 0.85)
+opponentStatus.Text = "Opponent: waiting"
+opponentStatus.Parent = panel
+
+local rematchBtn = Instance.new("TextButton")
+rematchBtn.Size = UDim2.fromOffset(140, 44)
+rematchBtn.Position = UDim2.new(0.25, -70, 1, -60)
+rematchBtn.Text = "Rematch"
+rematchBtn.Parent = panel
+
+local leaveBtn = Instance.new("TextButton")
+leaveBtn.Size = UDim2.fromOffset(140, 44)
+leaveBtn.Position = UDim2.new(0.75, -70, 1, -60)
+leaveBtn.Text = "Leave"
+leaveBtn.AutoButtonColor = false
+leaveBtn.Active = false
+leaveBtn.TextColor3 = Color3.new(0.5, 0.5, 0.5)
+leaveBtn.Parent = panel
+
+local rematchRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.RematchRequest)
+local leaveRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.LeaveMatch)
+local matchEndRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(Events.Names.MatchEnd)
+
+local currentMatchTimer = nil
+
+matchEndRemote.OnClientEvent:Connect(function(event)
+    panel.Visible = true
+    local isWinner = tostring(event.winner) == tostring(player.UserId)
+    title.Text = isWinner and "🏆 Match Winner!" or "Match over"
+    local lines = {}
+    for pid, score in event.finalScores do
+        table.insert(lines, "Player " .. pid .. ": " .. score
+            .. "   Best chain: " .. (event.bestChain[pid] or 0))
+    end
+    if event.closestRoundPearls then
+        table.insert(lines, "Closest round: " .. event.closestRoundPearls .. " pearls from overflow")
+    end
+    scoreLines.Text = table.concat(lines, "\n")
+
+    -- Leave-button cooldown: 1s
+    task.delay(Constants.REMATCH_LEAVE_COOLDOWN, function()
+        leaveBtn.AutoButtonColor = true
+        leaveBtn.Active = true
+        leaveBtn.TextColor3 = Color3.new(1, 1, 1)
+    end)
+
+    -- Countdown
+    local started = tick()
+    if currentMatchTimer then task.cancel(currentMatchTimer) end
+    currentMatchTimer = task.spawn(function()
+        while panel.Visible do
+            local remaining = Constants.REMATCH_WINDOW - (tick() - started)
+            if remaining <= 0 then
+                panel.Visible = false
+                break
+            end
+            countdown.Text = string.format("Rematch window: %.1fs", remaining)
+            task.wait(0.1)
+        end
+    end)
+end)
+
+rematchBtn.MouseButton1Click:Connect(function()
+    rematchRemote:FireServer({})
+    rematchBtn.Active = false
+    rematchBtn.AutoButtonColor = false
+    opponentStatus.Text = "Opponent: waiting"
+end)
+
+leaveBtn.MouseButton1Click:Connect(function()
+    if not leaveBtn.Active then return end
+    leaveRemote:FireServer({})
+    panel.Visible = false
+end)
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/StarterGui/MatchEnd/MatchEnd.client.lua
+git commit -m "Day 3: MatchEnd screen with countdown ring, opponent status, 1s leave cooldown"
+git push
+```
+
+### Task 3.10: Wire rematch/leave to RoomManager
+
+**Files:**
+- Modify: `src/ServerScriptService/Main.server.lua`
+
+- [ ] **Step 1: Append remote listeners**
+
+Append to `Main.server.lua` (before the final `print`):
+
+```lua
+-- Input routing
+local moveRemote = ReplicatedStorage.Remotes.InputMove
+local rotateRemote = ReplicatedStorage.Remotes.InputRotate
+local softDropRemote = ReplicatedStorage.Remotes.InputSoftDrop
+local hardDropRemote = ReplicatedStorage.Remotes.InputHardDrop
+local rematchRemote = ReplicatedStorage.Remotes.RematchRequest
+local leaveRemote = ReplicatedStorage.Remotes.LeaveMatch
+
+moveRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:applyInput(player, { type = "move", direction = payload.direction })
+end)
+rotateRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:applyInput(player, { type = "rotate", direction = payload.direction })
+end)
+softDropRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:applyInput(player, { type = "softDrop", held = payload.held })
+end)
+hardDropRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:applyInput(player, { type = "hardDrop" })
+end)
+rematchRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:registerRematchVote(player, true)
+end)
+leaveRemote.OnServerEvent:Connect(function(player, payload)
+    roomManager:registerRematchVote(player, false)
+end)
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/ServerScriptService/Main.server.lua
+git commit -m "Day 3: wire input + rematch/leave RemoteEvents to RoomManager"
+git push
+```
+
+### Task 3.11: Day-3 integration playtest
+
+- [ ] **Step 1: In Studio, use Test → Local Server with 2 players**
+
+Studio menu → **Test** → **Start** → choose "Local Server, 2 Players". Two Roblox client windows appear plus a server window.
+
+- [ ] **Step 2: Verify each scenario manually**
+
+| Scenario | Expected |
+|---|---|
+| Both players join | Match starts after both queue (check server Output for "room started") |
+| One player closes their client | After 10s grace, surviving player wins round |
+| One player idle for 15s on a piece | That player forfeits the round |
+| Both overflow same tick (rig in test) | Tiebreaker uses tick-start score; tied → P1 wins by order |
+| Drawn round | Queued garbage cleared; round redoes |
+| Match end at 2-1 | MatchEnd screen appears for both; rematch flow active |
+| Both rematch | New match begins, fresh boards |
+| One leaves | Surviving player returns to queue |
+
+Note: full piece-falling + chain mechanics need additional plumbing to drive `applyInput → board state mutations → ChainResolver.resolve → queueGarbage`. That plumbing is partially implemented; if scenarios above can't be tested fully today, ship them on Friday as bug-bash.
+
+- [ ] **Step 3: Producer logs Day 3**
+
+DM `@Producer`: "Write today's daily-log.md entry."
+
+**Day-3 exit gate:** A full 1v1 can be played from queue → match-end → rematch. Some piece-mechanics polish may slip to Friday — that's expected per the risk register.
+
+---
+
+(Day 4 follows.)
