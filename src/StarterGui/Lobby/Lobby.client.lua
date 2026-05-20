@@ -104,12 +104,23 @@ local bobConn = RunService.RenderStepped:Connect(function()
     card.Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset, basePosY, baseOffsetY + offset)
 end)
 
+-- Debug override: when true, force the card visible regardless of the
+-- DataStore-persisted dismiss attribute. Toggled by the corner "?" button
+-- below. Remove the whole `Debug toggle` block (and the forceShow read in
+-- applyVisibility) to retire this once we don't need it.
+local forceShow = false
+
 local function applyVisibility()
+    if forceShow then
+        card.Visible = true
+        return
+    end
     card.Visible = not player:GetAttribute(ATTRIBUTE)
 end
 
 local function requestDismiss()
     squish(closeScale)
+    forceShow = false
     card.Visible = false
     dismissRemote:FireServer()
 end
@@ -124,6 +135,44 @@ card.InputBegan:Connect(function(input)
         requestDismiss()
     end
 end)
+
+-- ── Debug toggle ────────────────────────────────────────────────────────
+-- Tiny corner button to force-show the tutorial card during testing.
+-- Safe to delete this whole block once the tutorial visuals are settled.
+local debugBtn = Instance.new("TextButton")
+debugBtn.Name = "TutorialDebugToggle"
+debugBtn.Size = UDim2.fromOffset(32, 32)
+debugBtn.Position = UDim2.new(1, -16, 0, 16)
+debugBtn.AnchorPoint = Vector2.new(1, 0)
+debugBtn.AutoButtonColor = false
+debugBtn.BorderSizePixel = 0
+debugBtn.BackgroundColor3 = UIConstants.Colors.Cream
+debugBtn.TextColor3 = UIConstants.Colors.TextDark
+debugBtn.FontFace = UIConstants.Fonts.Display
+debugBtn.TextSize = 18
+debugBtn.Text = "?"
+debugBtn.Parent = screenGui
+
+local debugCorner = Instance.new("UICorner")
+debugCorner.CornerRadius = UIConstants.Corners.Button
+debugCorner.Parent = debugBtn
+
+local debugStroke = Instance.new("UIStroke")
+debugStroke.Color = UIConstants.Colors.StrokeWarm
+debugStroke.Thickness = 1.5
+debugStroke.Transparency = 0.4
+debugStroke.Parent = debugBtn
+
+local debugScale = Instance.new("UIScale")
+debugScale.Scale = 1
+debugScale.Parent = debugBtn
+
+debugBtn.MouseButton1Click:Connect(function()
+    squish(debugScale)
+    forceShow = not forceShow
+    applyVisibility()
+end)
+-- ─────────────────────────────────────────────────────────────────────────
 
 screenGui.AncestryChanged:Connect(function(_, parent)
     if not parent then bobConn:Disconnect() end
