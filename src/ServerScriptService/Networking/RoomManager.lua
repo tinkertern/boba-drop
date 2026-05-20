@@ -20,6 +20,7 @@ end
 
 function RoomManager:enqueuePlayer(player)
     table.insert(self._queue, player)
+    player:SetAttribute("GameState", "matching")
     print("[RoomManager] enqueued " .. player.Name .. " (queue size " .. #self._queue .. ")")
     self:_tryMatchmake()
 end
@@ -40,6 +41,8 @@ function RoomManager:_startRoom(p1, p2)
     self._playerRoom[p1.UserId] = room
     self._playerRoom[p2.UserId] = room
     self._rematchVotes[room] = {}
+    p1:SetAttribute("GameState", "in_match")
+    p2:SetAttribute("GameState", "in_match")
     gs:startRound()
     print("[RoomManager] room started: " .. p1.Name .. " vs " .. p2.Name)
 end
@@ -86,6 +89,9 @@ function RoomManager:registerRematchVote(player, accept)
             })
             room.phase = "playing"
             self._rematchVotes[room] = {}
+            for _, p in room.players do
+                if p and p.Parent then p:SetAttribute("GameState", "in_match") end
+            end
             room.gameState:startRound()
         end
     else
@@ -98,7 +104,12 @@ function RoomManager:_closeRoom(room)
     for _, p in room.players do
         self._playerRoom[p.UserId] = nil
         if p.Parent then
+            -- Surface "lobby" first so Producer's UIStateController can show the
+            -- lobby panel; the immediate re-queue below transitions us to
+            -- "matching" on the next tick.
+            p:SetAttribute("GameState", "lobby")
             table.insert(self._queue, p)
+            p:SetAttribute("GameState", "matching")
         end
     end
     self._rematchVotes[room] = nil
@@ -112,6 +123,9 @@ end
 function RoomManager:onMatchEnd(room)
     -- Called by StateSync subscriber when GameState fires onMatchEnd
     room.phase = "postMatch"
+    for _, p in room.players do
+        if p and p.Parent then p:SetAttribute("GameState", "match_end") end
+    end
     -- 15s rematch window started by client; server cleans up after timeout
     task.delay(Constants.REMATCH_WINDOW, function()
         if room.phase == "postMatch" then

@@ -17,6 +17,7 @@ local stateSync = StateSync.new(roomManager)
 local gamePasses = GamePasses.new()
 
 Players.PlayerAdded:Connect(function(player)
+    player:SetAttribute("GameState", "lobby")
     roomManager:enqueuePlayer(player)
 end)
 
