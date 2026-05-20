@@ -198,7 +198,7 @@ queueLabel.Parent = queuePanel
 
 local cancelBtn = Instance.new("TextButton")
 cancelBtn.Name = "CancelBtn"
-cancelBtn.Size = UDim2.fromOffset(120, 36)
+cancelBtn.Size = UDim2.fromOffset(144, 36) -- wide enough for "Search again"
 cancelBtn.Position = UDim2.new(0, 12, 1, -46)
 cancelBtn.AnchorPoint = Vector2.new(0, 0)
 cancelBtn.AutoButtonColor = false

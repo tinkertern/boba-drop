@@ -135,6 +135,14 @@ local function previewSwatch(theme, order)
         corner.CornerRadius = UIConstants.Corners.Pearl
         corner.Parent = p
 
+        -- Warm stroke so cream-coloured pearls stay visible against the
+        -- cup-tint background of each swatch (cup tints can be near-cream).
+        local pearlStroke = Instance.new("UIStroke")
+        pearlStroke.Color = UIConstants.Colors.StrokeWarm
+        pearlStroke.Thickness = 1.5
+        pearlStroke.Transparency = 0.2
+        pearlStroke.Parent = p
+
         local highlight = Instance.new("Frame")
         highlight.Size = UIConstants.Pearl.HighlightSize
         highlight.Position = UIConstants.Pearl.HighlightPosition
