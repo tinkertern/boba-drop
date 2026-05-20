@@ -48,13 +48,13 @@ UIConstants.Colors = {
 -- Typography
 --------------------------------------------------------------------------------
 
--- Cartoon is the safe friendly choice across all Roblox clients.
--- Swap to FontFace = Font.fromName("rbxasset://fonts/families/FredokaOne.json")
--- on individual TextLabels if/when we commit to FredokaOne globally.
+-- Fonts use the new FontFace API (Font.new). Consumers set
+-- TextLabel.FontFace, not the legacy TextLabel.Font enum.
+-- FredokaOne = chunky friendly display font. Gotham = neutral HUD/body.
 UIConstants.Fonts = {
-    Display = Enum.Font.Cartoon,    -- big celebratory text: score, chain counter
-    HUD = Enum.Font.GothamBold,     -- small UI labels (SCORE, queue elapsed, etc.)
-    Tutorial = Enum.Font.Gotham,    -- body copy
+    Display = Font.new("rbxasset://fonts/families/FredokaOne.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
+    HUD = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+    Tutorial = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
 }
 
 UIConstants.TextSizes = {
