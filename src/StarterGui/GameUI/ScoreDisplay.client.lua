@@ -1,7 +1,8 @@
 -- Day 1 scaffold: in-game score HUD.
--- Visual structure is final. Score formula is a placeholder until the canonical
--- score event lands in Day 3 networking — current behavior cumulates totalPopped
--- from ChainCompleted for the local player and resets on RoundEnd.
+-- Server is authoritative on score: Day 3 will extend ChainCompleted with
+-- `scoreAdded` (computed via Scoring.compute on the server). Client just
+-- accumulates that and resets on RoundEnd. Until Day 3, scoreAdded is
+-- absent and the HUD stays at 0.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -61,7 +62,7 @@ local roundEndRemote = remotes:WaitForChild(Events.Names.RoundEnd)
 
 chainRemote.OnClientEvent:Connect(function(payload)
     if not payload.isLocal then return end
-    score += payload.totalPopped or 0
+    score += payload.scoreAdded or 0
     render()
 end)
 
