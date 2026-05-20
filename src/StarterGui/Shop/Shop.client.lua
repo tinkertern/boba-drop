@@ -88,9 +88,12 @@ body.Text = "Three cosmetic cup themes:\nBrown Sugar Boba, Strawberry Milk, Matc
 body.Parent = modal
 
 -- Theme preview swatches: three pearls in each theme's signature color.
+-- 104 px tall (was 90) so the label band underneath the pearls has room
+-- for "Brown Sugar Boba" to wrap to two lines without spilling out of
+-- the cell.
 local previewRow = Instance.new("Frame")
 previewRow.Name = "PreviewRow"
-previewRow.Size = UDim2.new(1, 0, 0, 90)
+previewRow.Size = UDim2.new(1, 0, 0, 104)
 previewRow.Position = UDim2.fromOffset(0, 160)
 previewRow.BackgroundTransparency = 1
 previewRow.Parent = modal
@@ -106,7 +109,7 @@ previewLayout.Parent = previewRow
 local function previewSwatch(theme, order)
     local cell = Instance.new("Frame")
     cell.Name = theme.name
-    cell.Size = UDim2.fromOffset(110, 90)
+    cell.Size = UDim2.fromOffset(110, 104)
     cell.BackgroundColor3 = theme.CupTint
     cell.BorderSizePixel = 0
     cell.LayoutOrder = order
@@ -157,17 +160,24 @@ local function previewSwatch(theme, order)
         highlightCorner.Parent = highlight
     end
 
-    pearl(theme.PearlBrown, 0.27, 0.4, 28)
-    pearl(theme.PearlPink, 0.5, 0.6, 28)
-    pearl(theme.PearlGreen, 0.73, 0.4, 28)
+    -- Pearl Y positions lifted (0.40 → 0.32, 0.60 → 0.50) so the taller
+    -- label band underneath has clear room.
+    pearl(theme.PearlBrown, 0.27, 0.32, 28)
+    pearl(theme.PearlPink, 0.5, 0.5, 28)
+    pearl(theme.PearlGreen, 0.73, 0.32, 28)
 
+    -- TextWrapped + 2-line height lets "Brown Sugar Boba" wrap inside the
+    -- cell instead of spilling out the right edge. "Matcha" / "Strawberry
+    -- Milk" still center cleanly because TextYAlignment defaults to Center.
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -8, 0, 18)
-    label.Position = UDim2.new(0, 4, 1, -22)
+    label.Size = UDim2.new(1, -8, 0, 32)
+    label.Position = UDim2.new(0, 4, 1, -36)
     label.BackgroundTransparency = 1
     label.FontFace = UIConstants.Fonts.HUD
     label.TextSize = UIConstants.TextSizes.HUDLabel
     label.TextColor3 = UIConstants.Colors.TextDark
+    label.TextWrapped = true
+    label.TextXAlignment = Enum.TextXAlignment.Center
     label.Text = theme.name
     label.Parent = cell
 end
