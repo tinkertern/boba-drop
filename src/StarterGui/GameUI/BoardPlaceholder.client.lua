@@ -28,6 +28,35 @@ local BOARD_VISIBLE_HEIGHT = 12
 local BOARD_TOTAL_HEIGHT = 14
 local DANGER_ROW = BOARD_VISIBLE_HEIGHT
 
+-- Diagnostic helpers. Internal only: prints/warns go to the Studio Output
+-- window so Sarah can paste them back when something looks off. Tag every
+-- line with [BoardRenderer] so it's greppable.
+local function countCells(cells)
+    if type(cells) ~= "table" then return 0, 0 end
+    local rowCount, cellCount = 0, 0
+    for r = 1, BOARD_TOTAL_HEIGHT do
+        local rowTable = cells[r]
+        if rowTable ~= nil then
+            rowCount += 1
+            for c = 1, BOARD_WIDTH do
+                if rowTable[c] then cellCount += 1 end
+            end
+        end
+    end
+    return rowCount, cellCount
+end
+
+local function fmtBool(v)
+    if v == true then return "true" end
+    if v == false then return "false" end
+    return "nil"
+end
+
+local function fmtVal(v)
+    if v == nil then return "nil" end
+    return tostring(v)
+end
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local localUserId = tostring(player.UserId)
@@ -273,7 +302,16 @@ end
 local pieceLockedRemote = Remotes:WaitForChild("PieceLocked", 10)
 if pieceLockedRemote then
     pieceLockedRemote.OnClientEvent:Connect(function(event)
-        if not isLocalEvent(event) then return end
+        local isLocal = isLocalEvent(event)
+        local rowCount, cellCount = countCells(event and event.cells)
+        print(("[BoardRenderer] PieceLocked received isLocal=%s cells=%s rows=%d filled=%d aRow=%s aCol=%s bRow=%s bCol=%s"):format(
+            fmtBool(isLocal),
+            (event and event.cells) and "Y" or "N",
+            rowCount, cellCount,
+            fmtVal(event and event.aRow), fmtVal(event and event.aCol),
+            fmtVal(event and event.bRow), fmtVal(event and event.bCol)
+        ))
+        if not isLocal then return end
         -- The just-locked pair stops being "active". Clear any active overlay
         -- then repaint locked state from the post-settle snapshot.
         clearActivePearls()
@@ -290,15 +328,22 @@ end
 local activePieceRemote = Remotes:WaitForChild("ActivePieceUpdate", 10)
 if activePieceRemote then
     activePieceRemote.OnClientEvent:Connect(function(event)
-        if not isLocalEvent(event) then return end
+        local isLocal = isLocalEvent(event)
+        local aColor = event and event.colors and event.colors.a
+        local bColor = event and event.colors and event.colors.b
+        print(("[BoardRenderer] ActivePieceUpdate received isLocal=%s pivot=%s,%s ori=%s colors.a=%s colors.b=%s"):format(
+            fmtBool(isLocal),
+            fmtVal(event and event.pivotRow), fmtVal(event and event.pivotCol),
+            fmtVal(event and event.orientation),
+            fmtVal(aColor), fmtVal(bColor)
+        ))
+        if not isLocal then return end
         clearActivePearls()
         local pivotRow = event.pivotRow
         local pivotCol = event.pivotCol
         local orientation = event.orientation or 0
         if not pivotRow or not pivotCol then return end
         local dr, dc = partnerOffset(orientation)
-        local aColor = event.colors and event.colors.a
-        local bColor = event.colors and event.colors.b
         if aColor then paintPearl(pivotRow, pivotCol, aColor, "active") end
         if bColor then paintPearl(pivotRow + dr, pivotCol + dc, bColor, "active") end
     end)
@@ -307,7 +352,16 @@ end
 local chainCompletedRemote = Remotes:WaitForChild("ChainCompleted", 10)
 if chainCompletedRemote then
     chainCompletedRemote.OnClientEvent:Connect(function(event)
-        if not isLocalEvent(event) then return end
+        local isLocal = isLocalEvent(event)
+        local rowCount, cellCount = countCells(event and event.cells)
+        print(("[BoardRenderer] ChainCompleted received isLocal=%s cells=%s rows=%d filled=%d chainLength=%s totalPopped=%s"):format(
+            fmtBool(isLocal),
+            (event and event.cells) and "Y" or "N",
+            rowCount, cellCount,
+            fmtVal(event and event.chainLength),
+            fmtVal(event and event.totalPopped)
+        ))
+        if not isLocal then return end
         if event.cells then
             paintFromSnapshot(event.cells)
         end
@@ -317,7 +371,45 @@ end
 
 local roundEndRemote = Remotes:WaitForChild("RoundEnd", 10)
 if roundEndRemote then
-    roundEndRemote.OnClientEvent:Connect(function(_event)
+    roundEndRemote.OnClientEvent:Connect(function(event)
+        print(("[BoardRenderer] RoundEnd received reason=%s winnerId=%s"):format(
+            fmtVal(event and event.reason),
+            fmtVal(event and event.winnerId)
+        ))
         clearAll()
     end)
+end
+
+-- Stale-state safety net. If we enter in_match but no pearls show up within
+-- 1.5s (no ActivePieceUpdate, no PieceLocked), warn so the lost-initial-spawn
+-- race condition between RoomManager and StateSync is visible in Output. This
+-- is a pure observation hook: it doesn't fix the race, just makes it loud.
+local function snapshotHasAnyPearl()
+    for _key, entry in pairs(pearlByPos) do
+        if entry and entry.pearl then return true end
+    end
+    return false
+end
+
+local function watchInMatch()
+    local enteredAt = os.clock()
+    print(("[BoardRenderer] GameState -> in_match at t=%.2f userId=%s"):format(enteredAt, localUserId))
+    task.delay(1.5, function()
+        if player:GetAttribute("GameState") ~= "in_match" then return end
+        if not snapshotHasAnyPearl() then
+            warn("[BoardRenderer] In match for 1.5s but board is empty, likely missed initial spawn event")
+        end
+    end)
+end
+
+player:GetAttributeChangedSignal("GameState"):Connect(function()
+    local state = player:GetAttribute("GameState")
+    print(("[BoardRenderer] GameState changed -> %s"):format(fmtVal(state)))
+    if state == "in_match" then
+        watchInMatch()
+    end
+end)
+
+if player:GetAttribute("GameState") == "in_match" then
+    watchInMatch()
 end
