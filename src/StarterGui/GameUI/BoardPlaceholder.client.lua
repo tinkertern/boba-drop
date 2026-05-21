@@ -123,7 +123,11 @@ local function layoutOrderFor(row, col)
 end
 
 local cellsByPos = {}
-local pearlByPos = {}
+-- Two separate pools so a transient "active" overlay can never destroy the
+-- "locked" pearl underneath it. Locked is the source of truth (server-side
+-- snapshot); active is a per-frame overlay owned by ActivePieceUpdate.
+local lockedPearls = {}
+local activePearls = {}
 
 local function posKey(row, col)
     return row .. "_" .. col
@@ -218,58 +222,75 @@ local function paintPearl(row, col, serverColorName, kind)
     if row < 1 or row > BOARD_TOTAL_HEIGHT or col < 1 or col > BOARD_WIDTH then
         return
     end
-    local cell = cellsByPos[posKey(row, col)]
+    local key = posKey(row, col)
+    local cell = cellsByPos[key]
     if not cell then return end
-    local existing = pearlByPos[posKey(row, col)]
-    if existing and existing.pearl then existing.pearl:Destroy() end
-    local pearl = buildPearl(cell, colorForServerName(serverColorName), kind == "active")
-    pearlByPos[posKey(row, col)] = { pearl = pearl, kind = kind }
+    if kind == "active" then
+        -- Diagnostic: surface the conflict so we can confirm the fix is wired
+        -- when Sarah retests the danger-row spawn case.
+        if lockedPearls[key] then
+            print(("[BoardRenderer] paintPearl conflict avoided: locked at (%d, %d) vs active at (%d, %d)"):format(row, col, row, col))
+        end
+        local existingActive = activePearls[key]
+        if existingActive and existingActive.pearl then existingActive.pearl:Destroy() end
+        local pearl = buildPearl(cell, colorForServerName(serverColorName), true)
+        activePearls[key] = { pearl = pearl, kind = "active" }
+    else
+        local existingLocked = lockedPearls[key]
+        if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
+        local pearl = buildPearl(cell, colorForServerName(serverColorName), false)
+        lockedPearls[key] = { pearl = pearl, kind = "locked" }
+    end
 end
 
 local function clearPearl(row, col)
     local key = posKey(row, col)
-    local existing = pearlByPos[key]
-    if existing and existing.pearl then existing.pearl:Destroy() end
-    pearlByPos[key] = nil
+    local existingLocked = lockedPearls[key]
+    if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
+    lockedPearls[key] = nil
+    local existingActive = activePearls[key]
+    if existingActive and existingActive.pearl then existingActive.pearl:Destroy() end
+    activePearls[key] = nil
 end
 
 local function clearActivePearls()
-    for key, entry in pairs(pearlByPos) do
-        if entry.kind == "active" then
-            if entry.pearl then entry.pearl:Destroy() end
-            pearlByPos[key] = nil
-        end
+    for key, entry in pairs(activePearls) do
+        if entry.pearl then entry.pearl:Destroy() end
+        activePearls[key] = nil
     end
 end
 
 local function clearAll()
-    for key, entry in pairs(pearlByPos) do
+    for key, entry in pairs(lockedPearls) do
         if entry.pearl then entry.pearl:Destroy() end
-        pearlByPos[key] = nil
+        lockedPearls[key] = nil
+    end
+    for key, entry in pairs(activePearls) do
+        if entry.pearl then entry.pearl:Destroy() end
+        activePearls[key] = nil
     end
 end
 
 -- Declarative repaint from a server-sent cells snapshot. cells is a 2D table
 -- where cells[row][col] is either a color name ("Brown"/"Pink"/...) or nil.
--- Leaves active pearls alone (those are repainted by ActivePieceUpdate). Used
--- by PieceLocked and ChainCompleted, both of which carry the post-event grid.
+-- Touches only the locked pool. The active overlay is owned by
+-- ActivePieceUpdate and is left alone here. Used by PieceLocked and
+-- ChainCompleted, both of which carry the post-event grid.
 local function paintFromSnapshot(cells)
     if type(cells) ~= "table" then return end
     for row = 1, BOARD_TOTAL_HEIGHT do
         local rowTable = cells[row]
         for col = 1, BOARD_WIDTH do
             local key = posKey(row, col)
-            local existing = pearlByPos[key]
+            local existingLocked = lockedPearls[key]
             local snapshotColor = rowTable and rowTable[col]
-            if existing and existing.kind == "active" then
-                -- active pearls are owned by ActivePieceUpdate; don't touch
-            elseif snapshotColor then
-                if existing and existing.pearl then existing.pearl:Destroy() end
+            if snapshotColor then
+                if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
                 local pearl = buildPearl(cellsByPos[key], colorForServerName(snapshotColor), false)
-                pearlByPos[key] = { pearl = pearl, kind = "locked" }
+                lockedPearls[key] = { pearl = pearl, kind = "locked" }
             else
-                if existing and existing.pearl then existing.pearl:Destroy() end
-                pearlByPos[key] = nil
+                if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
+                lockedPearls[key] = nil
             end
         end
     end
@@ -385,7 +406,10 @@ end
 -- race condition between RoomManager and StateSync is visible in Output. This
 -- is a pure observation hook: it doesn't fix the race, just makes it loud.
 local function snapshotHasAnyPearl()
-    for _key, entry in pairs(pearlByPos) do
+    for _key, entry in pairs(lockedPearls) do
+        if entry and entry.pearl then return true end
+    end
+    for _key, entry in pairs(activePearls) do
         if entry and entry.pearl then return true end
     end
     return false
