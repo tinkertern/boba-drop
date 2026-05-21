@@ -104,12 +104,23 @@ panelStroke.Thickness = 2
 panelStroke.Transparency = 0.5
 panelStroke.Parent = panel
 
+-- Inner "Content" frame holds the listed sections (title, scrolling body,
+-- GOT IT). The X close button sits directly on `panel` as a sibling of
+-- `content`, which keeps it OUT of the UIListLayout flow so it can be
+-- absolutely positioned top-right without pushing other content.
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.Size = UDim2.fromScale(1, 1)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.Parent = panel
+
 local panelPadding = Instance.new("UIPadding")
 panelPadding.PaddingTop = UDim.new(0, 22)
 panelPadding.PaddingBottom = UDim.new(0, 22)
 panelPadding.PaddingLeft = UDim.new(0, 24)
 panelPadding.PaddingRight = UDim.new(0, 24)
-panelPadding.Parent = panel
+panelPadding.Parent = content
 
 -- Vertical stack list so sections flow top-to-bottom without manual Y math
 local panelList = Instance.new("UIListLayout")
@@ -117,13 +128,43 @@ panelList.FillDirection = Enum.FillDirection.Vertical
 panelList.SortOrder = Enum.SortOrder.LayoutOrder
 panelList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 panelList.Padding = UDim.new(0, 14)
-panelList.Parent = panel
+panelList.Parent = content
+
+--------------------------------------------------------------------------------
+-- Top-right X close button (always visible, parented to `panel` directly so
+-- it sits OUTSIDE the content UIListLayout. Players can always bail even if
+-- the scrolling body's content overflows on small screens. Matches the
+-- WarmCancel X pattern in Settings.client.lua.
+--------------------------------------------------------------------------------
+
+local xCloseBtn = Instance.new("TextButton")
+xCloseBtn.Name = "Close"
+xCloseBtn.Size = UDim2.fromOffset(36, 36)
+xCloseBtn.Position = UDim2.new(1, -8, 0, 8)
+xCloseBtn.AnchorPoint = Vector2.new(1, 0)
+xCloseBtn.Text = "×"
+xCloseBtn.FontFace = UIConstants.Fonts.Display
+xCloseBtn.TextSize = 26
+xCloseBtn.TextColor3 = UIConstants.Colors.TextOnWarm
+xCloseBtn.BackgroundColor3 = UIConstants.Colors.WarmCancel
+xCloseBtn.BorderSizePixel = 0
+xCloseBtn.AutoButtonColor = false
+xCloseBtn.ZIndex = 5
+xCloseBtn.Parent = panel
+
+local xCloseCorner = Instance.new("UICorner")
+xCloseCorner.CornerRadius = UIConstants.Corners.Button
+xCloseCorner.Parent = xCloseBtn
+
+local xCloseScale = Instance.new("UIScale")
+xCloseScale.Scale = 1
+xCloseScale.Parent = xCloseBtn
 
 --------------------------------------------------------------------------------
 -- Section helpers
 --------------------------------------------------------------------------------
 
-local function makeTitle(layoutOrder)
+local function makeTitle(parent, layoutOrder)
     local title = Instance.new("TextLabel")
     title.Name = "Title"
     title.LayoutOrder = layoutOrder
@@ -134,11 +175,11 @@ local function makeTitle(layoutOrder)
     title.TextColor3 = UIConstants.Colors.TextDark
     title.Text = "HOW TO PLAY"
     title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = panel
+    title.Parent = parent
     return title
 end
 
-local function makeHeading(layoutOrder, text)
+local function makeHeading(parent, layoutOrder, text)
     local heading = Instance.new("TextLabel")
     heading.Name = text .. "Heading"
     heading.LayoutOrder = layoutOrder
@@ -149,7 +190,7 @@ local function makeHeading(layoutOrder, text)
     heading.TextColor3 = UIConstants.Colors.TextDark
     heading.Text = text
     heading.TextXAlignment = Enum.TextXAlignment.Left
-    heading.Parent = panel
+    heading.Parent = parent
     return heading
 end
 
@@ -172,23 +213,61 @@ local function makeBodyLine(parent, layoutOrder, richText)
 end
 
 --------------------------------------------------------------------------------
--- 1. Title
+-- 1. Title (fixed, always visible at top of `content`)
 --------------------------------------------------------------------------------
 
-makeTitle(1)
+makeTitle(content, 1)
 
 --------------------------------------------------------------------------------
--- 2. CONTROLS section (heading + two-column row)
+-- 2. Scrolling body (CONTROLS / GOAL / TIPS live inside this so the modal
+-- stays usable on small viewports where the full section stack would push
+-- the GOT IT button off screen).
+--
+-- Sizing: the panel's content area is `100% - 22 - 22 = 100% - 44` tall.
+-- We reserve 36 (title) + 52 (GOT IT) + 14*2 (UIListLayout gaps between
+-- title/body and body/GOT IT) = 116, plus 44 for vertical padding = 160.
+-- So `1, 0, 1, -160` fills the leftover vertical space exactly.
+--
+-- AutomaticCanvasSize.Y combined with the inner UIListLayout makes the
+-- canvas grow to fit the stacked sections without us tracking total height
+-- by hand.
 --------------------------------------------------------------------------------
 
-makeHeading(2, "CONTROLS")
+local scrollBody = Instance.new("ScrollingFrame")
+scrollBody.Name = "Body"
+scrollBody.LayoutOrder = 2
+scrollBody.Size = UDim2.new(1, 0, 1, -160)
+scrollBody.BackgroundTransparency = 1
+scrollBody.BorderSizePixel = 0
+scrollBody.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollBody.ScrollBarThickness = 6
+scrollBody.ScrollBarImageColor3 = UIConstants.Colors.StrokeWarm
+scrollBody.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollBody.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollBody.Parent = content
+
+local scrollBodyList = Instance.new("UIListLayout")
+scrollBodyList.FillDirection = Enum.FillDirection.Vertical
+scrollBodyList.SortOrder = Enum.SortOrder.LayoutOrder
+scrollBodyList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+scrollBodyList.Padding = UDim.new(0, 14)
+scrollBodyList.Parent = scrollBody
+
+--------------------------------------------------------------------------------
+-- 3. CONTROLS section (heading + two-column row), inside the scroll body
+--------------------------------------------------------------------------------
+
+makeHeading(scrollBody, 2, "CONTROLS")
 
 local controlsRow = Instance.new("Frame")
 controlsRow.Name = "ControlsRow"
 controlsRow.LayoutOrder = 3
-controlsRow.Size = UDim2.new(1, 0, 0, 140)
+-- Was 140 with 5 KEYBOARD lines; one line dropped post Tetris-controls
+-- consolidation so 120 is comfortable for the longest column (TOUCH = 3
+-- body lines + subheading; KEYBOARD = 4 body lines + subheading).
+controlsRow.Size = UDim2.new(1, 0, 0, 120)
 controlsRow.BackgroundTransparency = 1
-controlsRow.Parent = panel
+controlsRow.Parent = scrollBody
 
 local controlsRowList = Instance.new("UIListLayout")
 controlsRowList.FillDirection = Enum.FillDirection.Horizontal
@@ -235,9 +314,8 @@ end
 
 makeControlColumn(1, "KEYBOARD", {
     "<b>&#8592; &#8594;</b>  move left/right",
-    "<b>Z</b>  rotate counter-clockwise",
-    "<b>X</b>  rotate clockwise",
-    "<b>&#8595;</b>  soft drop (hold)",
+    "<b>&#8593; / W</b>  rotate clockwise",
+    "<b>&#8595; / S</b>  soft drop (hold)",
     "<b>Space</b>  hard drop",
 })
 
@@ -248,17 +326,17 @@ makeControlColumn(2, "TOUCH", {
 })
 
 --------------------------------------------------------------------------------
--- 3. GOAL section
+-- 4. GOAL section
 --------------------------------------------------------------------------------
 
-makeHeading(4, "GOAL")
+makeHeading(scrollBody, 4, "GOAL")
 
 local goalBlock = Instance.new("Frame")
 goalBlock.Name = "GoalBlock"
 goalBlock.LayoutOrder = 5
 goalBlock.Size = UDim2.new(1, 0, 0, 80)
 goalBlock.BackgroundTransparency = 1
-goalBlock.Parent = panel
+goalBlock.Parent = scrollBody
 
 local goalList = Instance.new("UIListLayout")
 goalList.FillDirection = Enum.FillDirection.Vertical
@@ -284,17 +362,17 @@ makeBodyLine(goalBlock, 3,
     'First cup to <b><font color="' .. warnHex .. '">overflow</font></b> loses.')
 
 --------------------------------------------------------------------------------
--- 4. TIPS section
+-- 5. TIPS section
 --------------------------------------------------------------------------------
 
-makeHeading(6, "TIPS")
+makeHeading(scrollBody, 6, "TIPS")
 
 local tipsBlock = Instance.new("Frame")
 tipsBlock.Name = "TipsBlock"
 tipsBlock.LayoutOrder = 7
 tipsBlock.Size = UDim2.new(1, 0, 0, 80)
 tipsBlock.BackgroundTransparency = 1
-tipsBlock.Parent = panel
+tipsBlock.Parent = scrollBody
 
 local tipsList = Instance.new("UIListLayout")
 tipsList.FillDirection = Enum.FillDirection.Vertical
@@ -308,7 +386,9 @@ makeBodyLine(tipsBlock, 2, "&#8226;  <b>Chain reactions</b> score more and send 
 makeBodyLine(tipsBlock, 3, "&#8226;  <b>Watch your danger row</b>. When it pulses fast, you're close to losing.")
 
 --------------------------------------------------------------------------------
--- 5. GOT IT close button (full width pill at bottom)
+-- 6. GOT IT close button (full width pill, always visible at bottom of
+-- `content`. LayoutOrder 8 keeps it as the last item in the panel's
+-- vertical list regardless of how the scroll body sizes.)
 --------------------------------------------------------------------------------
 
 local closeBtn = Instance.new("TextButton")
@@ -322,7 +402,7 @@ closeBtn.TextColor3 = UIConstants.Colors.TextDark
 closeBtn.FontFace = UIConstants.Fonts.Display
 closeBtn.TextSize = 22
 closeBtn.Text = "GOT IT"
-closeBtn.Parent = panel
+closeBtn.Parent = content
 
 local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UIConstants.Corners.Button
@@ -466,6 +546,11 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     squish(closeScale)
+    closeModal()
+end)
+
+xCloseBtn.MouseButton1Click:Connect(function()
+    squish(xCloseScale)
     closeModal()
 end)
 
