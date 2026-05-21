@@ -20,6 +20,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 -- Placeholder Roblox library asset for pop/lock SFX. Same source id for both;
@@ -150,8 +151,12 @@ local cellsByPos = {}
 -- Two separate pools so a transient "active" overlay can never destroy the
 -- "locked" pearl underneath it. Locked is the source of truth (server-side
 -- snapshot); active is a per-frame overlay owned by ActivePieceUpdate.
+-- ghostPearls is a third pool, drop-target outline tied to the active piece;
+-- rebuilt fresh on every ActivePieceUpdate, never destructive of lockedPearls.
 local lockedPearls = {}
 local activePearls = {}
+local ghostPearls = {}
+local dangerRowCells = {}
 
 local function posKey(row, col)
     return row .. "_" .. col
@@ -174,7 +179,9 @@ local function makeCell(row, col, isDanger)
     cell.Name = ("Cell_%d_%d"):format(row, col)
     if isDanger then
         cell.BackgroundColor3 = UIConstants.Colors.GarbageWarning
-        cell.BackgroundTransparency = 0.45
+        -- Starts barely-visible; pulse driver raises transparency dynamically
+        -- as the player's stack approaches the danger threshold (A8).
+        cell.BackgroundTransparency = 0.85
     else
         cell.BackgroundColor3 = (row % 2 == 0) and CELL_TONE_A or CELL_TONE_B
         cell.BackgroundTransparency = 0.35
@@ -199,9 +206,17 @@ end
 
 for row = 1, BOARD_TOTAL_HEIGHT do
     for col = 1, BOARD_WIDTH do
-        makeCell(row, col, row == DANGER_ROW)
+        local cell = makeCell(row, col, row == DANGER_ROW)
+        if row == DANGER_ROW then
+            table.insert(dangerRowCells, cell)
+        end
     end
 end
+
+-- Static baseline transparency for danger row cells; the dynamic pulse
+-- (A8) overrides this each frame when the player's stack approaches the
+-- danger threshold. Stored so we can restore exactly on board clear.
+local DANGER_BASELINE_TRANSPARENCY = 0.85
 
 local function buildPearl(parent, color, isActive)
     local p = Instance.new("Frame")
@@ -277,10 +292,50 @@ local function clearPearl(row, col)
     activePearls[key] = nil
 end
 
+-- Tracks the currently-falling pair as a single coherent object across
+-- ActivePieceUpdate events. When colors match the previous tick, we tween the
+-- existing Frames between cell positions (A4: smooth fall). When colors differ,
+-- the piece is new and we destroy + rebuild. Cleared by clearActivePearls.
+--
+-- aPearl / bPearl are parented to `container` (not to the cell) so we can
+-- tween Position smoothly without reparent thrash. Cells remain the layout
+-- anchors; we compute their absolute pixel center on demand.
+local activePieceState = {
+    aPearl = nil,
+    bPearl = nil,
+    aColor = nil,
+    bColor = nil,
+    pivotRow = nil,
+    pivotCol = nil,
+    orientation = nil,
+}
+
 local function clearActivePearls()
+    if activePieceState.aPearl then
+        activePieceState.aPearl:Destroy()
+        activePieceState.aPearl = nil
+    end
+    if activePieceState.bPearl then
+        activePieceState.bPearl:Destroy()
+        activePieceState.bPearl = nil
+    end
+    activePieceState.aColor = nil
+    activePieceState.bColor = nil
+    activePieceState.pivotRow = nil
+    activePieceState.pivotCol = nil
+    activePieceState.orientation = nil
+    -- Also drain the legacy activePearls pool in case any cell-parented active
+    -- pearls were left from the pre-A4 flow.
     for key, entry in pairs(activePearls) do
         if entry.pearl then entry.pearl:Destroy() end
         activePearls[key] = nil
+    end
+end
+
+local function clearGhostPearls()
+    for i, pearl in ipairs(ghostPearls) do
+        if pearl then pearl:Destroy() end
+        ghostPearls[i] = nil
     end
 end
 
@@ -289,10 +344,8 @@ local function clearAll()
         if entry.pearl then entry.pearl:Destroy() end
         lockedPearls[key] = nil
     end
-    for key, entry in pairs(activePearls) do
-        if entry.pearl then entry.pearl:Destroy() end
-        activePearls[key] = nil
-    end
+    clearActivePearls()
+    clearGhostPearls()
 end
 
 -- Declarative repaint from a server-sent cells snapshot. cells is a 2D table
@@ -491,6 +544,288 @@ local function partnerOffset(orientation)
     end
 end
 
+--------------------------------------------------------------------------------
+-- A4 helpers: container-relative pearl positioning + tween
+--------------------------------------------------------------------------------
+
+-- Cells are children of `container` arranged by UIGridLayout. To tween an
+-- active pearl between cells, we parent it directly to `container` and place
+-- it with pixel offsets computed from the target cell's AbsolutePosition.
+-- AnchorPoint (0.5, 0.5) means Position points at the cell center.
+--
+-- Defensive against pre-layout AbsoluteSize=zero (can happen on the very first
+-- ActivePieceUpdate if the grid hasn't been measured yet): wait one frame and
+-- retry up to 5 times before giving up.
+local function cellCenterOffset(row, col)
+    local cell = cellsByPos[posKey(row, col)]
+    if not cell then return nil end
+    local cellSize = cell.AbsoluteSize
+    local attempts = 0
+    while (cellSize.X <= 0 or cellSize.Y <= 0) and attempts < 5 do
+        RunService.RenderStepped:Wait()
+        cellSize = cell.AbsoluteSize
+        attempts += 1
+    end
+    if cellSize.X <= 0 or cellSize.Y <= 0 then return nil end
+    local cellPos = cell.AbsolutePosition
+    local containerPos = container.AbsolutePosition
+    local centerX = (cellPos.X - containerPos.X) + cellSize.X * 0.5
+    local centerY = (cellPos.Y - containerPos.Y) + cellSize.Y * 0.5
+    return UDim2.fromOffset(centerX, centerY), cellSize
+end
+
+-- Build an active pearl parented to `container` at the given cell's center.
+-- Mirrors buildPearl shape/styling but uses pixel offsets so we can tween
+-- Position smoothly across cell boundaries.
+local function buildActivePearlAtCell(row, col, color)
+    local centerOffset, cellSize = cellCenterOffset(row, col)
+    if not centerOffset then return nil end
+    local p = Instance.new("Frame")
+    p.Name = "ActivePearl"
+    p.AnchorPoint = Vector2.new(0.5, 0.5)
+    p.Position = centerOffset
+    p.Size = UDim2.fromOffset(cellSize.X * 0.82, cellSize.Y * 0.82)
+    p.BackgroundColor3 = color
+    p.BorderSizePixel = 0
+    p.ZIndex = 5
+    p.Parent = container
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Pearl
+    corner.Parent = p
+
+    local pearlStroke = Instance.new("UIStroke")
+    pearlStroke.Color = UIConstants.Colors.StrokeWarm
+    pearlStroke.Thickness = 1.5
+    pearlStroke.Transparency = 0.25
+    pearlStroke.Parent = p
+
+    local highlight = Instance.new("Frame")
+    highlight.Name = "Highlight"
+    highlight.Size = UIConstants.Pearl.HighlightSize
+    highlight.Position = UIConstants.Pearl.HighlightPosition
+    highlight.AnchorPoint = UIConstants.Pearl.HighlightAnchor
+    highlight.BackgroundColor3 = UIConstants.Colors.PearlHighlight
+    highlight.BackgroundTransparency = UIConstants.Pearl.HighlightTransparency
+    highlight.BorderSizePixel = 0
+    highlight.ZIndex = 6
+    highlight.Parent = p
+
+    local highlightCorner = Instance.new("UICorner")
+    highlightCorner.CornerRadius = UIConstants.Corners.Pearl
+    highlightCorner.Parent = highlight
+
+    return p
+end
+
+-- Move an existing active pearl to a new cell. Snap if duration <= 0, else
+-- tween Position with the given TweenInfo. Size is updated to match the new
+-- cell's pixel size (matters if the screen resized between events; rare).
+local function moveActivePearlToCell(pearl, row, col, tweenInfo)
+    if not pearl then return end
+    local centerOffset, cellSize = cellCenterOffset(row, col)
+    if not centerOffset then return end
+    local targetSize = UDim2.fromOffset(cellSize.X * 0.82, cellSize.Y * 0.82)
+    if not tweenInfo then
+        pearl.Position = centerOffset
+        pearl.Size = targetSize
+        return
+    end
+    local tween = TweenService:Create(pearl, tweenInfo, {
+        Position = centerOffset,
+        Size = targetSize,
+    })
+    tween:Play()
+end
+
+-- Classify the motion between the previous and new active-piece state so we
+-- can pick the right tween timing (or snap on hard drop).
+-- Returns: TweenInfo or nil. nil means "snap, no tween" (hard drop case).
+local function classifyActiveTween(prevPivotRow, prevPivotCol, prevOri, newPivotRow, newPivotCol, newOri)
+    local rowDelta = newPivotRow - prevPivotRow
+    local colDelta = newPivotCol - prevPivotCol
+    local oriChanged = (newOri ~= prevOri)
+    if rowDelta <= -2 then
+        -- Hard drop: instant snap, the slam should feel discrete.
+        return nil
+    end
+    if oriChanged then
+        return TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    end
+    if rowDelta == -1 and colDelta == 0 then
+        -- Gravity tick fall.
+        return TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    end
+    if rowDelta == 0 and (colDelta == 1 or colDelta == -1) then
+        -- Player lateral move.
+        return TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    end
+    -- Fallback: any other small delta gets the gravity-tick feel.
+    return TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+end
+
+--------------------------------------------------------------------------------
+-- A5 helpers: drop ghost outline
+--------------------------------------------------------------------------------
+
+-- Returns true if the given (row, col) is occupied by a locked pearl or sits
+-- below the cup floor. Used by the ghost ray-trace to find the landing row.
+local function isCellBlocked(row, col)
+    if row < 1 then return true end
+    if col < 1 or col > BOARD_WIDTH then return true end
+    return lockedPearls[posKey(row, col)] ~= nil
+end
+
+-- Trace the active pair downward as a rigid body. Both pivot and partner must
+-- find empty cells simultaneously. Returns landingPivotRow such that the
+-- partner sits at landingPivotRow + dr. nil means no valid landing (already
+-- at or below cup floor).
+local function traceLanding(pivotRow, pivotCol, dr, dc)
+    local partnerCol = pivotCol + dc
+    -- Walk downward from current position. Find the lowest pivotRow such that
+    -- both (pivotRow, pivotCol) and (pivotRow + dr, partnerCol) are empty AND
+    -- the cell directly below the lower of the two pearls would be blocked
+    -- (or we are at row 1). We do this by walking down while still legal.
+    local row = pivotRow
+    while row >= 1 do
+        local nextRow = row - 1
+        local nextPivotBlocked = isCellBlocked(nextRow, pivotCol)
+        local nextPartnerBlocked = isCellBlocked(nextRow + dr, partnerCol)
+        -- If either pearl can't move down one more step, current `row` is the
+        -- landing row.
+        if nextPivotBlocked or nextPartnerBlocked then
+            return row
+        end
+        row = nextRow
+    end
+    return 1
+end
+
+-- Build a single ghost pearl (faded outline, no highlight) at the given cell.
+local function buildGhostPearl(row, col, color)
+    local cell = cellsByPos[posKey(row, col)]
+    if not cell then return nil end
+    local p = Instance.new("Frame")
+    p.Name = "GhostPearl"
+    p.Size = UDim2.fromScale(0.82, 0.82)
+    p.Position = UDim2.fromScale(0.5, 0.5)
+    p.AnchorPoint = Vector2.new(0.5, 0.5)
+    p.BackgroundColor3 = color
+    p.BackgroundTransparency = 0.75
+    p.BorderSizePixel = 0
+    p.ZIndex = 2
+    p.Parent = cell
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Pearl
+    corner.Parent = p
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = UIConstants.Colors.StrokeWarm
+    stroke.Thickness = 2
+    stroke.Transparency = 0.5
+    stroke.Parent = p
+    return p
+end
+
+-- Repaint the ghost from the current active piece state. Cheap; clears the
+-- previous pair and paints two fresh ghost pearls. Skipped when:
+--   1) The piece already sits at its landing row (outline would just hug the
+--      active pearl).
+--   2) The pivot would land at row 1 (cup floor); spec says no informational
+--      value in showing the ghost there.
+local function paintGhost(pivotRow, pivotCol, orientation, aColor, bColor)
+    clearGhostPearls()
+    if not pivotRow or not pivotCol then return end
+    local dr, dc = partnerOffset(orientation)
+    local landingPivotRow = traceLanding(pivotRow, pivotCol, dr, dc)
+    if not landingPivotRow or landingPivotRow == pivotRow then return end
+    if landingPivotRow == 1 then return end
+    local partnerRow = landingPivotRow + dr
+    local partnerCol = pivotCol + dc
+    if aColor then
+        local g = buildGhostPearl(landingPivotRow, pivotCol, colorForServerName(aColor))
+        if g then table.insert(ghostPearls, g) end
+    end
+    if bColor then
+        local g = buildGhostPearl(partnerRow, partnerCol, colorForServerName(bColor))
+        if g then table.insert(ghostPearls, g) end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- A8 helpers: danger row dynamic pulse
+--------------------------------------------------------------------------------
+
+-- Pulse driver state. Only one RenderStepped connection at a time; the
+-- generation counter lets us cheaply cancel previous pulses without holding
+-- onto signal connections.
+local dangerPulseConnection = nil
+local dangerPulseGeneration = 0
+local DANGER_COLOR = UIConstants.Colors.GarbageWarning
+
+local function setDangerRowStatic(transparency)
+    for _, cell in ipairs(dangerRowCells) do
+        cell.BackgroundTransparency = transparency
+    end
+end
+
+local function stopDangerPulse()
+    dangerPulseGeneration += 1
+    if dangerPulseConnection then
+        dangerPulseConnection:Disconnect()
+        dangerPulseConnection = nil
+    end
+end
+
+-- Drive the danger row cells with a sine pulse around the given baseline
+-- transparency. Amplitude swings BackgroundTransparency by +/- 0.15 so it
+-- visibly breathes without strobing.
+local function startDangerPulse(baseTransparency, period)
+    stopDangerPulse()
+    local gen = dangerPulseGeneration
+    local startClock = os.clock()
+    dangerPulseConnection = RunService.RenderStepped:Connect(function()
+        if gen ~= dangerPulseGeneration then return end
+        local elapsed = os.clock() - startClock
+        local phase = (elapsed / period) * math.pi * 2
+        local pulse = math.sin(phase) * 0.15
+        local t = math.clamp(baseTransparency + pulse, 0, 1)
+        for _, cell in ipairs(dangerRowCells) do
+            cell.BackgroundColor3 = DANGER_COLOR
+            cell.BackgroundTransparency = t
+        end
+    end)
+end
+
+-- Find the highest occupied row across all columns in the locked pool.
+-- Returns 0 when the board is empty.
+local function highestOccupiedRow()
+    local highest = 0
+    for key, _entry in pairs(lockedPearls) do
+        local r = tonumber(key:match("^(%d+)"))
+        if r and r > highest then highest = r end
+    end
+    return highest
+end
+
+-- Recompute the danger row visualization from the current locked-pearl state.
+-- Called after every paintFromSnapshot, and reset to static on RoundEnd.
+local function updateDangerRow()
+    local highest = highestOccupiedRow()
+    if highest <= 9 then
+        stopDangerPulse()
+        setDangerRowStatic(DANGER_BASELINE_TRANSPARENCY)
+    elseif highest == 10 then
+        startDangerPulse(0.65, 2.0)
+    elseif highest == 11 then
+        startDangerPulse(0.4, 1.2)
+    else
+        -- 12 or above (overflow territory).
+        startDangerPulse(0.15, 0.6)
+    end
+end
+
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
 if not Remotes then
     warn("[BoardRenderer] Remotes folder missing; renderer will stay static")
@@ -517,8 +852,10 @@ if pieceLockedRemote then
         ))
         if not isLocal then return end
         -- The just-locked pair stops being "active". Clear any active overlay
-        -- then repaint locked state from the post-settle snapshot.
+        -- then repaint locked state from the post-settle snapshot. Ghost also
+        -- goes away; the next ActivePieceUpdate (new piece) will repaint it.
         clearActivePearls()
+        clearGhostPearls()
         if event.cells then
             -- Reconcile first so any locked pearl now absent from the snapshot
             -- (e.g., a garbage-applied gravitySettle moved cells) is destroyed
@@ -543,6 +880,9 @@ if pieceLockedRemote then
             animateLockSquish(event.bRow, event.bCol)
         end
         playLockSound()
+
+        -- A8: re-evaluate danger row pulse against the new locked-pearl stack.
+        updateDangerRow()
     end)
 end
 
@@ -559,14 +899,49 @@ if activePieceRemote then
             fmtVal(aColor), fmtVal(bColor)
         ))
         if not isLocal then return end
-        clearActivePearls()
         local pivotRow = event.pivotRow
         local pivotCol = event.pivotCol
         local orientation = event.orientation or 0
-        if not pivotRow or not pivotCol then return end
+        if not pivotRow or not pivotCol then
+            clearActivePearls()
+            clearGhostPearls()
+            return
+        end
         local dr, dc = partnerOffset(orientation)
-        if aColor then paintPearl(pivotRow, pivotCol, aColor, "active") end
-        if bColor then paintPearl(pivotRow + dr, pivotCol + dc, bColor, "active") end
+
+        -- A4: tween vs rebuild decision. If the colors match the previous tick,
+        -- we treat this as the same piece moving and tween the existing pearls
+        -- between cells. If colors changed, the previous piece locked and a new
+        -- one spawned; rebuild fresh.
+        local sameColors = activePieceState.aPearl ~= nil
+            and activePieceState.bPearl ~= nil
+            and activePieceState.aColor == aColor
+            and activePieceState.bColor == bColor
+        if sameColors then
+            local tweenInfo = classifyActiveTween(
+                activePieceState.pivotRow, activePieceState.pivotCol, activePieceState.orientation,
+                pivotRow, pivotCol, orientation
+            )
+            moveActivePearlToCell(activePieceState.aPearl, pivotRow, pivotCol, tweenInfo)
+            moveActivePearlToCell(activePieceState.bPearl, pivotRow + dr, pivotCol + dc, tweenInfo)
+        else
+            -- New piece or first-ever paint: rebuild fresh in the container.
+            clearActivePearls()
+            if aColor then
+                activePieceState.aPearl = buildActivePearlAtCell(pivotRow, pivotCol, colorForServerName(aColor))
+            end
+            if bColor then
+                activePieceState.bPearl = buildActivePearlAtCell(pivotRow + dr, pivotCol + dc, colorForServerName(bColor))
+            end
+        end
+        activePieceState.pivotRow = pivotRow
+        activePieceState.pivotCol = pivotCol
+        activePieceState.orientation = orientation
+        activePieceState.aColor = aColor
+        activePieceState.bColor = bColor
+
+        -- A5: redraw the drop-ghost outline based on the new active position.
+        paintGhost(pivotRow, pivotCol, orientation, aColor, bColor)
     end)
 end
 
@@ -646,6 +1021,10 @@ if chainCompletedRemote then
             if event.cells then
                 paintFromSnapshot(event.cells)
             end
+            -- A8: chains can either spike the stack (rare; garbage incoming)
+            -- or relieve it (typical). Recompute pulse against the settled
+            -- locked-pearl state.
+            updateDangerRow()
         end)
         -- Chain HUD + score are handled by ChainCounter / ScoreDisplay scripts.
     end)
@@ -660,6 +1039,10 @@ if roundEndRemote then
             fmtVal(event and event.loser)
         ))
         clearAll()
+        -- A8: reset danger row to its quiet baseline; the board is empty so
+        -- there's no overflow risk to telegraph.
+        stopDangerPulse()
+        setDangerRowStatic(DANGER_BASELINE_TRANSPARENCY)
     end)
 end
 
@@ -674,6 +1057,7 @@ local function snapshotHasAnyPearl()
     for _key, entry in pairs(activePearls) do
         if entry and entry.pearl then return true end
     end
+    if activePieceState.aPearl or activePieceState.bPearl then return true end
     return false
 end
 
