@@ -50,11 +50,24 @@ end)
 -- Disabling controls prevents WASD from walking the avatar in the background
 -- and silences the footstep audio. Wrapped in a pcall in case PlayerModule
 -- isn't available in some run configurations.
+--
+-- Deferred until CharacterAdded so PlayerControls:Disable doesn't internally
+-- call Player:Move with no character, which logs "Player:Move called, but
+-- player currently has no character" on Studio start.
 local player = Players.LocalPlayer
-pcall(function()
-    local PlayerScripts = player:WaitForChild("PlayerScripts", 10)
-    local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule", 10))
-    PlayerModule:GetControls():Disable()
-end)
+
+local function disablePlayerControls()
+    pcall(function()
+        local PlayerScripts = player:WaitForChild("PlayerScripts", 10)
+        local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule", 10))
+        PlayerModule:GetControls():Disable()
+    end)
+end
+
+if player.Character then
+    disablePlayerControls()
+else
+    player.CharacterAdded:Connect(disablePlayerControls)
+end
 
 print("InputHandler (keyboard) ready")

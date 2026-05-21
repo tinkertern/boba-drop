@@ -15,11 +15,17 @@ local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
--- Asset choice: rbxassetid://9046862282 is a known lo-fi loop on the Roblox
--- audio library. It's a safe, free, evergreen pick. Sarah can swap this for
--- a curated cozy/cafe ambience later by changing AMBIENT_ASSET_ID. Possible
--- swap candidates noted in the scope doc: rbxassetid://1840684528 (cafe).
-local AMBIENT_ASSET_ID = "rbxassetid://9046862282"
+-- TODO Sarah: drop a real audio asset id here once you upload a cozy loop.
+-- Roblox tightened audio licensing in late 2024: only audio uploaded by
+-- the experience creator (or Roblox-published assets) plays in-experience.
+-- The prior placeholder (rbxassetid://9046862282) was the wrong asset type
+-- and Roblox rejected it at load. Until a valid id lives here, the Sound
+-- object stays parented (so the volume/enabled listeners still wire up for
+-- the Settings panel) but :Play() is gated so we don't spam the console.
+--
+-- Upload steps: creator.roblox.com → Creations → Audio → Upload, grab the
+-- asset id, format as "rbxassetid://<id>".
+local AMBIENT_ASSET_ID = ""
 
 local DEFAULT_VOLUME = 0.15
 local VOLUME_ATTRIBUTE = "BobaDropMusicVolume"
@@ -56,8 +62,10 @@ sound.Looped = true
 sound.Volume = resolveVolume()
 sound.Parent = SoundService
 
-if resolveEnabled() then
+if AMBIENT_ASSET_ID ~= "" and resolveEnabled() then
     sound:Play()
+elseif AMBIENT_ASSET_ID == "" then
+    warn("[AmbientLoop] No AMBIENT_ASSET_ID set. Upload an audio asset to your Roblox account and set the id in src/StarterGui/Audio/AmbientLoop.client.lua")
 end
 
 -- Runtime volume control. The Settings panel sets this attribute on the
@@ -83,7 +91,7 @@ end)
 -- handles this; Roblox occasionally pauses sounds on focus loss or network
 -- hiccups.
 sound.Ended:Connect(function()
-    if resolveEnabled() then
+    if AMBIENT_ASSET_ID ~= "" and resolveEnabled() then
         sound:Play()
     end
 end)
