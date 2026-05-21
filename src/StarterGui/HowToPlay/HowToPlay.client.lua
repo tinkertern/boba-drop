@@ -104,31 +104,18 @@ panelStroke.Thickness = 2
 panelStroke.Transparency = 0.5
 panelStroke.Parent = panel
 
--- Inner "Content" frame holds the listed sections (title, scrolling body,
--- GOT IT). The X close button sits directly on `panel` as a sibling of
--- `content`, which keeps it OUT of the UIListLayout flow so it can be
--- absolutely positioned top-right without pushing other content.
+-- Inner "Content" frame is a positioning anchor for absolutely-positioned
+-- children (title, scroll body, GOT IT). Earlier a UIListLayout+UIPadding
+-- pair managed them, but the scroll body's Scale-1 height didn't compose
+-- cleanly with the list flow and GOT IT floated above the panel bottom.
+-- Absolute positions on each child remove the ambiguity. The X close button
+-- still parents directly on `panel`.
 local content = Instance.new("Frame")
 content.Name = "Content"
 content.Size = UDim2.fromScale(1, 1)
 content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.Parent = panel
-
-local panelPadding = Instance.new("UIPadding")
-panelPadding.PaddingTop = UDim.new(0, 22)
-panelPadding.PaddingBottom = UDim.new(0, 22)
-panelPadding.PaddingLeft = UDim.new(0, 24)
-panelPadding.PaddingRight = UDim.new(0, 24)
-panelPadding.Parent = content
-
--- Vertical stack list so sections flow top-to-bottom without manual Y math
-local panelList = Instance.new("UIListLayout")
-panelList.FillDirection = Enum.FillDirection.Vertical
-panelList.SortOrder = Enum.SortOrder.LayoutOrder
-panelList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-panelList.Padding = UDim.new(0, 14)
-panelList.Parent = content
 
 --------------------------------------------------------------------------------
 -- Top-right X close button (always visible, parented to `panel` directly so
@@ -164,11 +151,12 @@ xCloseScale.Parent = xCloseBtn
 -- Section helpers
 --------------------------------------------------------------------------------
 
-local function makeTitle(parent, layoutOrder)
+local function makeTitle(parent)
     local title = Instance.new("TextLabel")
     title.Name = "Title"
-    title.LayoutOrder = layoutOrder
-    title.Size = UDim2.new(1, 0, 0, 36)
+    title.AnchorPoint = Vector2.new(0.5, 0)
+    title.Position = UDim2.new(0.5, 0, 0, 22)
+    title.Size = UDim2.new(1, -48, 0, 36)
     title.BackgroundTransparency = 1
     title.FontFace = UIConstants.Fonts.Display
     title.TextSize = 32
@@ -216,17 +204,18 @@ end
 -- 1. Title (fixed, always visible at top of `content`)
 --------------------------------------------------------------------------------
 
-makeTitle(content, 1)
+makeTitle(content)
 
 --------------------------------------------------------------------------------
 -- 2. Scrolling body (CONTROLS / GOAL / TIPS live inside this so the modal
 -- stays usable on small viewports where the full section stack would push
 -- the GOT IT button off screen).
 --
--- Sizing: the panel's content area is `100% - 22 - 22 = 100% - 44` tall.
--- We reserve 36 (title) + 52 (GOT IT) + 14*2 (UIListLayout gaps between
--- title/body and body/GOT IT) = 116, plus 44 for vertical padding = 160.
--- So `1, 0, 1, -160` fills the leftover vertical space exactly.
+-- Sits between the title and the bottom-anchored GOT IT button.
+--   top edge:    22 (gutter) + 36 (title) + 14 (gap)  = 72
+--   bottom edge: 22 (gutter) + 52 (GOT IT) + 14 (gap) = 88 from panel bottom
+--   height: panel_h - 72 - 88 = panel_h - 160  → Size.Y = (1, -160)
+--   width:  panel_w - 24 - 24 = panel_w -  48  → Size.X = (1,  -48)
 --
 -- AutomaticCanvasSize.Y combined with the inner UIListLayout makes the
 -- canvas grow to fit the stacked sections without us tracking total height
@@ -235,8 +224,9 @@ makeTitle(content, 1)
 
 local scrollBody = Instance.new("ScrollingFrame")
 scrollBody.Name = "Body"
-scrollBody.LayoutOrder = 2
-scrollBody.Size = UDim2.new(1, 0, 1, -160)
+scrollBody.AnchorPoint = Vector2.new(0.5, 0)
+scrollBody.Position = UDim2.new(0.5, 0, 0, 72)
+scrollBody.Size = UDim2.new(1, -48, 1, -160)
 scrollBody.BackgroundTransparency = 1
 scrollBody.BorderSizePixel = 0
 scrollBody.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -312,10 +302,12 @@ local function makeControlColumn(layoutOrder, columnTitle, lines)
     return col
 end
 
+-- Word labels instead of Unicode arrows: Roblox's display fonts (Fredoka,
+-- Gotham) don't carry arrow glyphs and render them as missing-character boxes.
 makeControlColumn(1, "KEYBOARD", {
-    "<b>&#8592; &#8594;</b>  move left/right",
-    "<b>&#8593; / W</b>  rotate clockwise",
-    "<b>&#8595; / S</b>  soft drop (hold)",
+    "<b>Left / Right</b>  move",
+    "<b>Up / W</b>  rotate clockwise",
+    "<b>Down / S</b>  soft drop (hold)",
     "<b>Space</b>  hard drop",
 })
 
@@ -386,15 +378,16 @@ makeBodyLine(tipsBlock, 2, "&#8226;  <b>Chain reactions</b> score more and send 
 makeBodyLine(tipsBlock, 3, "&#8226;  <b>Watch your danger row</b>. When it pulses fast, you're close to losing.")
 
 --------------------------------------------------------------------------------
--- 6. GOT IT close button (full width pill, always visible at bottom of
--- `content`. LayoutOrder 8 keeps it as the last item in the panel's
--- vertical list regardless of how the scroll body sizes.)
+-- 6. GOT IT close button: pinned to bottom of the panel via AnchorPoint
+-- (0.5, 1) so it stays flush against the bottom gutter regardless of the
+-- scroll body's measured height.
 --------------------------------------------------------------------------------
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "GotItBtn"
-closeBtn.LayoutOrder = 8
-closeBtn.Size = UDim2.new(1, 0, 0, 52)
+closeBtn.AnchorPoint = Vector2.new(0.5, 1)
+closeBtn.Position = UDim2.new(0.5, 0, 1, -22)
+closeBtn.Size = UDim2.new(1, -48, 0, 52)
 closeBtn.AutoButtonColor = false
 closeBtn.BorderSizePixel = 0
 closeBtn.BackgroundColor3 = UIConstants.Colors.Mint

@@ -5,10 +5,11 @@
 -- based on GameState: enabled while "matching", disabled otherwise.
 --
 -- The pill slides up from below on entering "matching" and slides down
--- when the controller flips us off. Cancel is a client-only state flip
--- for now (no LeaveQueue remote yet, known gap). Search-again fires
--- EnterQueue and restarts the local timer; the server treats it as a
--- fresh enqueue.
+-- when the controller flips us off. Cancel fires LeaveQueue, which removes
+-- the player from the server queue and flips GameState back to main_menu;
+-- UIStateController catches that and swaps the screen. Search-again fires
+-- EnterQueue and restarts the local timer; server-side enqueue is
+-- idempotent so a double-fire can't pair a player against themselves.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,8 +27,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- Search-again no-op rather than crashing.
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
 local enterQueueRemote = Remotes and Remotes:WaitForChild("EnterQueue", 30)
+local leaveQueueRemote = Remotes and Remotes:WaitForChild("LeaveQueue", 30)
 if not enterQueueRemote then
     warn("[Lobby] Remotes.EnterQueue not found within 30s. Search-again will no-op.")
+end
+if not leaveQueueRemote then
+    warn("[Lobby] Remotes.LeaveQueue not found within 30s. Cancel will fall back to a client-only pill flip.")
 end
 
 local screenGui = Instance.new("ScreenGui")
@@ -351,14 +356,21 @@ end
 cancelBtn.MouseButton1Click:Connect(function()
     squish(cancelScale)
     if queueActive then
-        -- Client-only cancel for now. The server still has us enqueued; a
-        -- real LeaveQueue remote is a Day 4 followup. setSearchAgainMode
-        -- gates the local timer so we stop showing growing seconds.
-        setSearchAgainMode("Tap Search again when you're ready.")
+        -- Server pops us from the queue and flips GameState back to
+        -- main_menu; UIStateController then swaps to the MainMenu screen
+        -- and onGameStateChanged below slides this pill out. Fallback to
+        -- the old client-only pill flip if the remote is missing so the
+        -- button never appears broken.
+        if leaveQueueRemote then
+            leaveQueueRemote:FireServer()
+        else
+            setSearchAgainMode("Tap Search again when you're ready.")
+        end
     else
         -- Search-again: re-fire EnterQueue and restart the local timer.
         -- GameState is already "matching" so UIStateController won't flip
-        -- the screen, the pill just rolls over to a fresh search.
+        -- the screen, the pill just rolls over to a fresh search. Server
+        -- enqueue is idempotent so a duplicate fire is a safe no-op.
         if enterQueueRemote then
             enterQueueRemote:FireServer({})
         end
