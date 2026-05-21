@@ -30,12 +30,13 @@ Constants.CHAIN_COUNTER_PERSIST = 1.0
 Constants.GARBAGE_DROP_WARNING_LEAD = 0.5
 
 -- Garbage table (chain length → cubes sent)
+-- Every chain sends garbage; amount scales with chain length.
 Constants.GARBAGE_TABLE = {
-    [1] = 0,
-    [2] = 1,
-    [3] = 3,
-    [4] = 6,
-    [5] = 12,
+    [1] = 1,
+    [2] = 3,
+    [3] = 6,
+    [4] = 12,
+    [5] = 18,
 }
 Constants.GARBAGE_CAP = 24 -- for chain length 6+
 
