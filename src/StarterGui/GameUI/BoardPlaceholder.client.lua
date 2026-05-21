@@ -729,18 +729,17 @@ local function buildGhostPearl(row, col, color)
 end
 
 -- Repaint the ghost from the current active piece state. Cheap; clears the
--- previous pair and paints two fresh ghost pearls. Skipped when:
---   1) The piece already sits at its landing row (outline would just hug the
---      active pearl).
---   2) The pivot would land at row 1 (cup floor); spec says no informational
---      value in showing the ghost there.
+-- previous pair and paints two fresh ghost pearls. Skipped only when the
+-- piece already sits at its landing row (outline would just hug the active
+-- pearl). The row-1-floor skip was removed at Sarah's request 2026-05-20:
+-- showing the ghost at the floor is still informative as you slide the piece
+-- across an empty cup floor.
 local function paintGhost(pivotRow, pivotCol, orientation, aColor, bColor)
     clearGhostPearls()
     if not pivotRow or not pivotCol then return end
     local dr, dc = partnerOffset(orientation)
     local landingPivotRow = traceLanding(pivotRow, pivotCol, dr, dc)
     if not landingPivotRow or landingPivotRow == pivotRow then return end
-    if landingPivotRow == 1 then return end
     local partnerRow = landingPivotRow + dr
     local partnerCol = pivotCol + dc
     if aColor then

@@ -305,22 +305,7 @@ _G.BobaDropShop = {
     close = function() setOpen(false) end,
 }
 
--- Post-match prompt for the losing player, max 1x per session.
-local promptShownThisSession = false
-task.spawn(function()
-    local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
-    if not remotes then return end
-    local matchEndName = Events.Names.MatchEnd
-    if not matchEndName then return end
-    local matchEndRemote = remotes:WaitForChild(matchEndName, 30)
-    if not matchEndRemote then return end
-
-    matchEndRemote.OnClientEvent:Connect(function(event)
-        local isLoser = tostring(event.winner) ~= tostring(player.UserId)
-        if isLoser and not promptShownThisSession then
-            promptShownThisSession = true
-            task.wait(2)  -- let the match-end animation breathe
-            setOpen(true)
-        end
-    end)
-end)
+-- Removed the auto-prompt-on-loss flow at Sarah's request 2026-05-20: the
+-- Shop should only open via explicit user action (Themes button in lobby
+-- or _G.BobaDropShop.open() from a script). The previous behavior surprised
+-- the losing player by popping the shop modal 2s after match-end.
