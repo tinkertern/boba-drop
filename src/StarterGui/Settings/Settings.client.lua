@@ -77,8 +77,12 @@ gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay + 1
 gui.IgnoreGuiInset = true
 gui.Parent = playerGui
 
+-- Scrim and modal both Active=true so clicks don't pass through to MainMenu
+-- buttons (PLAY etc.) sitting behind. The scrim InputBegan handler at the
+-- bottom of this file relies on Active=true to fire on a Frame click.
 local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
+scrim.Active = true
 scrim.Size = UDim2.fromScale(1, 1)
 scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
 scrim.BackgroundTransparency = 0.55
@@ -88,6 +92,7 @@ scrim.Parent = gui
 
 local modal = Instance.new("Frame")
 modal.Name = "Modal"
+modal.Active = true
 modal.Size = UDim2.fromOffset(480, 420)
 modal.Position = UDim2.fromScale(0.5, 0.5)
 modal.AnchorPoint = Vector2.new(0.5, 0.5)

@@ -69,8 +69,12 @@ questionScale.Parent = questionBtn
 -- Modal scrim + panel
 --------------------------------------------------------------------------------
 
+-- Scrim is Active=true so it captures clicks instead of letting them pass
+-- through to the MainMenu PLAY button behind. The InputBegan handler below
+-- treats a scrim click (i.e. outside the panel) as a request to close.
 local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
+scrim.Active = true
 scrim.Size = UDim2.fromScale(1, 1)
 scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
 scrim.BackgroundTransparency = 0.45 -- visual @ 0.55 opacity per spec
@@ -78,8 +82,11 @@ scrim.BorderSizePixel = 0
 scrim.Visible = false
 scrim.Parent = screen
 
+-- Panel is Active=true so a click on the cream area doesn't bubble through
+-- to the scrim (which would close the modal) or to the lobby behind.
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
+panel.Active = true
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Position = UDim2.fromScale(0.5, 0.5) -- final centered position; openModal animates the entry
 -- Responsive: 90% screen width up to 520px, 80% screen height up to 600px.
@@ -171,11 +178,11 @@ local function makeHeading(parent, layoutOrder, text)
     local heading = Instance.new("TextLabel")
     heading.Name = text .. "Heading"
     heading.LayoutOrder = layoutOrder
-    heading.Size = UDim2.new(1, 0, 0, 22)
+    heading.Size = UDim2.new(1, 0, 0, 26)
     heading.BackgroundTransparency = 1
     heading.FontFace = UIConstants.Fonts.Display
-    heading.TextSize = 18
-    heading.TextColor3 = UIConstants.Colors.TextDark
+    heading.TextSize = 22
+    heading.TextColor3 = UIConstants.Colors.Coral
     heading.Text = text
     heading.TextXAlignment = Enum.TextXAlignment.Left
     heading.Parent = parent
@@ -199,6 +206,18 @@ local function makeBodyLine(parent, layoutOrder, richText)
     label.Parent = parent
     return label
 end
+
+-- Hex helpers used by KEYBOARD / TOUCH / GOAL / TIPS body strings below.
+-- Declared here (not at first use) so the keyboard list near the top of the
+-- scroll body can reference the same color tokens as the GOAL/TIPS sections.
+local function rgbHex(c)
+    return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+end
+
+local coralHex = rgbHex(UIConstants.Colors.Coral)
+local pinkHex = rgbHex(UIConstants.Colors.PearlPink)
+local iceHex = rgbHex(UIConstants.Colors.IceBase)
+local warnHex = rgbHex(UIConstants.Colors.Warning)
 
 --------------------------------------------------------------------------------
 -- 1. Title (fixed, always visible at top of `content`)
@@ -288,9 +307,9 @@ local function makeControlColumn(layoutOrder, columnTitle, lines)
     sub.LayoutOrder = 1
     sub.Size = UDim2.new(1, 0, 0, 18)
     sub.BackgroundTransparency = 1
-    sub.FontFace = UIConstants.Fonts.HUD
+    sub.FontFace = UIConstants.Fonts.Display
     sub.TextSize = 14
-    sub.TextColor3 = UIConstants.Colors.TextSoft
+    sub.TextColor3 = UIConstants.Colors.TextDark
     sub.Text = columnTitle
     sub.TextXAlignment = Enum.TextXAlignment.Left
     sub.Parent = col
@@ -304,17 +323,20 @@ end
 
 -- Word labels instead of Unicode arrows: Roblox's display fonts (Fredoka,
 -- Gotham) don't carry arrow glyphs and render them as missing-character boxes.
+-- Each action gets a brand color on the key chips so the column scans by
+-- color rather than as a uniform block of dark text. WASD shown alongside
+-- arrows since both schemes are wired in InputHandler.
 makeControlColumn(1, "KEYBOARD", {
-    "<b>Left / Right</b>  move",
-    "<b>Up / W</b>  rotate clockwise",
-    "<b>Down / S</b>  soft drop (hold)",
-    "<b>Space</b>  hard drop",
+    '<b><font color="' .. coralHex .. '">A D</font></b> or <b><font color="' .. coralHex .. '">Left Right</font></b>  move',
+    '<b><font color="' .. pinkHex .. '">W</font></b> or <b><font color="' .. pinkHex .. '">Up</font></b>  rotate clockwise',
+    '<b><font color="' .. iceHex .. '">S</font></b> or <b><font color="' .. iceHex .. '">Down</font></b>  soft drop (hold)',
+    '<b><font color="' .. warnHex .. '">Space</font></b>  hard drop',
 })
 
 makeControlColumn(2, "TOUCH", {
-    "drag piece to move",
-    "tap piece to rotate",
-    "swipe down to hard drop",
+    '<b><font color="' .. coralHex .. '">drag</font></b> piece to move',
+    '<b><font color="' .. pinkHex .. '">tap</font></b> piece to rotate',
+    '<b><font color="' .. warnHex .. '">swipe down</font></b> to hard drop',
 })
 
 --------------------------------------------------------------------------------
@@ -336,15 +358,6 @@ goalList.SortOrder = Enum.SortOrder.LayoutOrder
 goalList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 goalList.Padding = UDim.new(0, 4)
 goalList.Parent = goalBlock
-
-local function rgbHex(c)
-    return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
-end
-
-local coralHex = rgbHex(UIConstants.Colors.Coral)
-local pinkHex = rgbHex(UIConstants.Colors.PearlPink)
-local iceHex = rgbHex(UIConstants.Colors.IceBase)
-local warnHex = rgbHex(UIConstants.Colors.Warning)
 
 makeBodyLine(goalBlock, 1,
     'Match <b>4 same-color pearls</b> to <b><font color="' .. coralHex .. '">pop</font></b> them.')
@@ -373,9 +386,15 @@ tipsList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 tipsList.Padding = UDim.new(0, 4)
 tipsList.Parent = tipsBlock
 
-makeBodyLine(tipsBlock, 1, "&#8226;  <b>Stack same colors</b> in vertical columns for easy 4-pops.")
-makeBodyLine(tipsBlock, 2, "&#8226;  <b>Chain reactions</b> score more and send more garbage.")
-makeBodyLine(tipsBlock, 3, "&#8226;  <b>Watch your danger row</b>. When it pulses fast, you're close to losing.")
+-- Bullets dropped: the &#8226; entity rendered as a tick / double-quote in
+-- Roblox's body font. Each tip's lead phrase is colored + bolded so it acts
+-- as its own visual marker.
+makeBodyLine(tipsBlock, 1,
+    '<b><font color="' .. coralHex .. '">Stack same colors</font></b> in vertical columns for easy 4-pops.')
+makeBodyLine(tipsBlock, 2,
+    '<b><font color="' .. pinkHex .. '">Chain reactions</font></b> score more and send more garbage.')
+makeBodyLine(tipsBlock, 3,
+    '<b><font color="' .. warnHex .. '">Watch your danger row</font></b>. When it pulses fast, you\'re close to losing.')
 
 --------------------------------------------------------------------------------
 -- 6. GOT IT close button: pinned to bottom of the panel via AnchorPoint
@@ -545,6 +564,16 @@ end)
 xCloseBtn.MouseButton1Click:Connect(function()
     squish(xCloseScale)
     closeModal()
+end)
+
+-- Scrim-click closes the modal too. scrim.Active=true above lets InputBegan
+-- fire on a Frame; the panel sits on top with its own Active=true so a click
+-- on the cream is absorbed before reaching here.
+scrim.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        closeModal()
+    end
 end)
 
 -- Exposed on _G.BobaDropHowToPlay so the MainMenu can surface the same modal

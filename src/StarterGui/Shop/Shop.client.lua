@@ -29,8 +29,12 @@ gui.Parent = playerGui
 -- open. Uses WarmDark (the warm-brown wash) at 0.55 transparency so the
 -- dim reads as a cozy tint rather than the muddy near-black a neutral
 -- gray would give. Preserves contrast against the cream modal card.
+-- Active=true on both scrim and modal so clicks don't fall through to
+-- MainMenu PLAY etc. behind. Scrim click → close (handler below); modal
+-- click is absorbed silently.
 local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
+scrim.Active = true
 scrim.Size = UDim2.fromScale(1, 1)
 scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
 scrim.BackgroundTransparency = 0.55
@@ -40,6 +44,7 @@ scrim.Parent = gui
 
 local modal = Instance.new("Frame")
 modal.Name = "Modal"
+modal.Active = true
 modal.Size = UDim2.fromOffset(420, 460)
 modal.Position = UDim2.fromScale(0.5, 0.5)
 modal.AnchorPoint = Vector2.new(0.5, 0.5)
