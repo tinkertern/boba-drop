@@ -21,8 +21,10 @@ local player = Players.LocalPlayer
 -- Audio. Click your uploaded clip, the id appears in the Properties
 -- panel or at the URL.
 local AMBIENT_PLAYLIST = {
-    -- "rbxassetid://<first_id>",
-    -- "rbxassetid://<second_id>",
+    "rbxassetid://85792360114125",
+    "rbxassetid://113967404054632",
+    "rbxassetid://140084880380594",
+    "rbxassetid://138371513798922",
 }
 
 local DEFAULT_VOLUME = 0.15
