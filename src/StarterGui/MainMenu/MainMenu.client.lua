@@ -293,7 +293,7 @@ end)
 local pillRow = Instance.new("Frame")
 pillRow.Name = "PillRow"
 pillRow.Size = UDim2.fromOffset(396, 44) -- 3 * 120 + 2 * 18 padding
-pillRow.Position = UDim2.fromScale(0.5, 0.65)
+pillRow.Position = UDim2.fromScale(0.5, 0.8)
 pillRow.AnchorPoint = Vector2.new(0.5, 0.5)
 pillRow.BackgroundTransparency = 1
 pillRow.ZIndex = 10
@@ -360,25 +360,6 @@ makePill("HowToBtn", "?", 28, 3, function()
         _G.BobaDropHowToPlay.open()
     end
 end)
-
---------------------------------------------------------------------------------
--- Credits: bottom-center fine print. String matches what Settings shows so
--- the two don't drift.
---------------------------------------------------------------------------------
-
-local credits = Instance.new("TextLabel")
-credits.Name = "Credits"
-credits.Size = UDim2.fromOffset(420, 18)
-credits.Position = UDim2.fromScale(0.5, 0.95)
-credits.AnchorPoint = Vector2.new(0.5, 1)
-credits.BackgroundTransparency = 1
-credits.FontFace = UIConstants.Fonts.Tutorial
-credits.TextSize = 11
-credits.TextColor3 = UIConstants.Colors.TextSoft
-credits.TextXAlignment = Enum.TextXAlignment.Center
-credits.Text = "made by Sarah Yoon, 4-day Roblox sprint, 2026-05-19 to 22"
-credits.ZIndex = 10
-credits.Parent = screenGui
 
 --------------------------------------------------------------------------------
 -- Cleanup: stop the pulse when the ScreenGui is destroyed (rare, but the
