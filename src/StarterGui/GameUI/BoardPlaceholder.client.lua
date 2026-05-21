@@ -20,6 +20,12 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+-- Placeholder Roblox library asset for pop/lock SFX. Same source id for both;
+-- chain pops pitch up per step, lock plays at lower pitch. Swap to a custom
+-- upload later if Sarah wants a curated set.
+local POP_SOUND_ID = "rbxassetid://6732690176"
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 
@@ -371,6 +377,102 @@ local function destroyPoppedCells(cellsPopped)
     return destroyed
 end
 
+-- Animated single-cell pop. Detaches the pearl from the lockedPearls pool so
+-- subsequent paints / reconciles don't trip over it, then runs:
+--   1) scale punch 1.0 -> 1.4 over 80ms (Quad/Out)
+--   2) color tween toward PearlHighlight (white) over the same 80ms
+--   3) shrink to 0 + fade transparency to 1 over 140ms (Quad/In)
+-- After 220ms the pearl is destroyed. Per-cell Sound parented to the pearl so
+-- it cleans up when the pearl is destroyed; pitch escalates per chain step.
+local function animatePopThenDestroy(row, col, stepIndex)
+    local key = posKey(row, col)
+    local entry = lockedPearls[key]
+    if not entry or not entry.pearl then return end
+    local pearl = entry.pearl
+    -- Detach so reconcile / additive paint won't double-destroy or repaint over it.
+    lockedPearls[key] = nil
+
+    -- Per-pearl Sound. Parent to pearl so destruction cleans it up if Ended
+    -- never fires (e.g., asset load failure).
+    local sound = Instance.new("Sound")
+    sound.SoundId = POP_SOUND_ID
+    sound.Volume = 0.6
+    sound.PlaybackSpeed = 1.0 + (stepIndex - 1) * 0.1
+    sound.Parent = pearl
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+    sound:Play()
+
+    local punchInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local punch = TweenService:Create(pearl, punchInfo, {
+        Size = UDim2.fromScale(0.82 * 1.4, 0.82 * 1.4),
+        BackgroundColor3 = UIConstants.Colors.PearlHighlight,
+    })
+    punch:Play()
+
+    task.delay(0.08, function()
+        if not pearl or not pearl.Parent then return end
+        local shrinkInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local shrink = TweenService:Create(pearl, shrinkInfo, {
+            Size = UDim2.fromScale(0, 0),
+            BackgroundTransparency = 1,
+        })
+        shrink:Play()
+        shrink.Completed:Connect(function()
+            if pearl then pearl:Destroy() end
+        end)
+    end)
+end
+
+-- Squish-bounce on a freshly-locked pearl. Reads the locked entry at (row, col)
+-- and tweens its Size through a Y-stretch, X-stretch, settle sequence. Cheap
+-- to call: if no pearl is there (shouldn't happen post-paintFromSnapshot but
+-- guarded anyway), bails silently.
+local function animateLockSquish(row, col)
+    local key = posKey(row, col)
+    local entry = lockedPearls[key]
+    if not entry or not entry.pearl then return end
+    local pearl = entry.pearl
+    local base = 0.82
+    local stretchInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local squashInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local settleInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    local stretch = TweenService:Create(pearl, stretchInfo, {
+        Size = UDim2.fromScale(base * 0.92, base * 1.15),
+    })
+    stretch:Play()
+    task.delay(0.06, function()
+        if not pearl or not pearl.Parent then return end
+        local squash = TweenService:Create(pearl, squashInfo, {
+            Size = UDim2.fromScale(base * 1.05, base * 0.95),
+        })
+        squash:Play()
+        task.delay(0.06, function()
+            if not pearl or not pearl.Parent then return end
+            local settle = TweenService:Create(pearl, settleInfo, {
+                Size = UDim2.fromScale(base, base),
+            })
+            settle:Play()
+        end)
+    end)
+end
+
+-- One-shot lock SFX. Lower pitch than pop, slightly quieter. Parented to the
+-- screenGui briefly, self-destructs on Ended.
+local function playLockSound()
+    local sound = Instance.new("Sound")
+    sound.SoundId = POP_SOUND_ID
+    sound.Volume = 0.4
+    sound.PlaybackSpeed = 0.7
+    sound.Parent = screenGui
+    sound.Ended:Connect(function()
+        sound:Destroy()
+    end)
+    sound:Play()
+end
+
 -- Partner-offset mirrors GameState.partnerOffset so the client can paint both
 -- pearls of an active piece from {anchorRow, anchorCol, orientation, colors}.
 -- 0: partner above (dr=+1, dc=0), 1: partner right (0,+1), 2: below (-1,0),
@@ -418,6 +520,16 @@ if pieceLockedRemote then
             paintPearl(event.aRow, event.aCol, event.a, "locked")
             paintPearl(event.bRow, event.bCol, event.b, "locked")
         end
+        -- Lock feedback: squish both freshly-locked pearls and play one tick.
+        -- Coexists with any subsequent chain pop on the same pearls; we don't
+        -- try to gate this against ChainCompleted because overlap is fine.
+        if type(event.aRow) == "number" and type(event.aCol) == "number" then
+            animateLockSquish(event.aRow, event.aCol)
+        end
+        if type(event.bRow) == "number" and type(event.bCol) == "number" then
+            animateLockSquish(event.bRow, event.bCol)
+        end
+        playLockSound()
     end)
 end
 
@@ -458,33 +570,66 @@ if chainCompletedRemote then
             fmtVal(event and event.totalPopped)
         ))
         if not isLocal then return end
-        -- Destroy popped cells explicitly first, using per-step coordinates,
-        -- so we don't repaint pearls that should have just popped. Then layer
-        -- on the additive snapshot to catch any gravity-settled positions the
-        -- server moved into previously empty cells.
+        -- Animated destroy path. Each step's popped cells run the pop tween
+        -- (scale punch, fade to white, shrink out) staggered by (i-1)*180ms,
+        -- with sound pitch escalating per step. We still tally destroyPoppedCells
+        -- semantics by counting what we hand off to animatePopThenDestroy.
+        -- Reconcile + repaint waits until the final step's animation is well
+        -- underway so the player sees pops before gravity settles.
         local totalDestroyed = 0
         local stepCount = 0
+        local stepStagger = 0.18
         if type(event.steps) == "table" then
-            for _, step in ipairs(event.steps) do
+            for i, step in ipairs(event.steps) do
                 if type(step) == "table" then
                     stepCount += 1
-                    totalDestroyed += destroyPoppedCells(step.cellsPopped)
+                    local cellsPopped = step.cellsPopped
+                    if type(cellsPopped) == "table" then
+                        for _, popEntry in ipairs(cellsPopped) do
+                            if type(popEntry) == "table" then
+                                local r = popEntry.row or popEntry[1]
+                                local c = popEntry.col or popEntry[2]
+                                if type(r) == "number" and type(c) == "number" and lockedPearls[posKey(r, c)] then
+                                    totalDestroyed += 1
+                                end
+                            end
+                        end
+                    end
+                    -- Spawn per step so staggered timing doesn't block the main thread.
+                    task.spawn(function()
+                        if i > 1 then
+                            task.wait((i - 1) * stepStagger)
+                        end
+                        if type(cellsPopped) == "table" then
+                            for _, popEntry in ipairs(cellsPopped) do
+                                if type(popEntry) == "table" then
+                                    local r = popEntry.row or popEntry[1]
+                                    local c = popEntry.col or popEntry[2]
+                                    if type(r) == "number" and type(c) == "number" then
+                                        animatePopThenDestroy(r, c, i)
+                                    end
+                                end
+                            end
+                        end
+                    end)
                 end
             end
         end
-        -- Reconcile surviving pearls against the post-settle snapshot so any
-        -- pearl that gravity moved is cleared from its old cell. Then additively
-        -- paint the new positions. Without the reconcile step, pearls above a
-        -- popped row would hang in mid-air visually even though the server
-        -- has them at new rows.
-        local settledRemoved = 0
-        if event.cells then
-            settledRemoved = reconcileLockedToSnapshot(event.cells)
-        end
-        print(("[BoardRenderer] ChainCompleted destroyed %d popped cells across %d steps, settled %d more"):format(totalDestroyed, stepCount, settledRemoved))
-        if event.cells then
-            paintFromSnapshot(event.cells)
-        end
+        -- Wait for the final per-step animation to finish before settling
+        -- gravity + repainting. Worst case: (stepCount * 180) + 220ms (the
+        -- 220 covers the 80ms punch + 140ms shrink of the last step).
+        task.spawn(function()
+            local waitSeconds = (math.max(stepCount, 1) - 1) * stepStagger + 0.22
+            task.wait(waitSeconds)
+            local settledRemoved = 0
+            if event.cells then
+                settledRemoved = reconcileLockedToSnapshot(event.cells)
+            end
+            print(("[BoardRenderer] ChainCompleted destroyed %d popped cells across %d steps, settled %d more"):format(totalDestroyed, stepCount, settledRemoved))
+            if event.cells then
+                paintFromSnapshot(event.cells)
+            end
+        end)
         -- Chain HUD + score are handled by ChainCounter / ScoreDisplay scripts.
     end)
 end
