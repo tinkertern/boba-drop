@@ -320,6 +320,31 @@ local function paintFromSnapshot(cells)
     end
 end
 
+-- Reconcile current locked pearls against a post-chain snapshot. Used by
+-- ChainCompleted to reflect gravity settle: surviving pearls that moved to
+-- new rows have their old positions cleared so they no longer hang in mid-air.
+-- Safe to use destructively here because the snapshot is dense (false in empty
+-- cells, server-side fix 393b098) so we won't drop entries to truncation.
+-- PieceLocked still uses additive paint because there's no gravity moment.
+local function reconcileLockedToSnapshot(cells)
+    if type(cells) ~= "table" then return 0 end
+    local removed = 0
+    for key, entry in pairs(lockedPearls) do
+        local r, c = key:match("(%d+)_(%d+)")
+        r, c = tonumber(r), tonumber(c)
+        if r and c then
+            local rowTable = rowLookup(cells, r)
+            local snapshotColor = cellLookup(rowTable, c)
+            if not snapshotColor then
+                if entry.pearl then entry.pearl:Destroy() end
+                lockedPearls[key] = nil
+                removed += 1
+            end
+        end
+    end
+    return removed
+end
+
 -- Explicit destruction path for chain pops. Server's ChainCompleted payload
 -- carries per-step cellsPopped (list of {row, col, color}) since commit 44e7003.
 -- Iterating these and clearing locked pearls at each coordinate is robust to
@@ -447,7 +472,16 @@ if chainCompletedRemote then
                 end
             end
         end
-        print(("[BoardRenderer] ChainCompleted destroyed %d popped cells across %d steps"):format(totalDestroyed, stepCount))
+        -- Reconcile surviving pearls against the post-settle snapshot so any
+        -- pearl that gravity moved is cleared from its old cell. Then additively
+        -- paint the new positions. Without the reconcile step, pearls above a
+        -- popped row would hang in mid-air visually even though the server
+        -- has them at new rows.
+        local settledRemoved = 0
+        if event.cells then
+            settledRemoved = reconcileLockedToSnapshot(event.cells)
+        end
+        print(("[BoardRenderer] ChainCompleted destroyed %d popped cells across %d steps, settled %d more"):format(totalDestroyed, stepCount, settledRemoved))
         if event.cells then
             paintFromSnapshot(event.cells)
         end
