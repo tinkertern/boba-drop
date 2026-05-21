@@ -216,23 +216,10 @@ local function setButtonEnabled(btn, enabled)
     btn.BackgroundTransparency = enabled and 0 or 0.3
 end
 
---------------------------------------------------------------------------------
--- Countdown line ("rematch closes in Ns")
---------------------------------------------------------------------------------
-
-local countdown = Instance.new("TextLabel")
-countdown.Name = "Countdown"
-countdown.AnchorPoint = Vector2.new(0.5, 1)
-countdown.Position = UDim2.new(0.5, 0, 1, 0)
-countdown.Size = UDim2.new(1, 0, 0, 18)
-countdown.BackgroundTransparency = 1
-countdown.FontFace = UIConstants.Fonts.Tutorial
-countdown.TextSize = 14
-countdown.TextColor3 = UIConstants.Colors.TextSoft
-countdown.TextXAlignment = Enum.TextXAlignment.Center
-countdown.Text = ""
-countdown.ZIndex = 3
-countdown.Parent = panel
+-- Rematch-window countdown text removed at Sarah's request 2026-05-20: the
+-- panel should stay open indefinitely waiting on a deliberate REMATCH or LEAVE
+-- click. Engineer's matching server change removes the corresponding auto-close
+-- timeout. If we ever want to reintroduce a soft hint, this is the spot.
 
 --------------------------------------------------------------------------------
 -- Animation helpers
@@ -392,8 +379,6 @@ matchEndRemote.OnClientEvent:Connect(function(event)
         setButtonEnabled(leaveBtn, true)
     end)
 
-    countdown.Text = ("rematch closes in %ds"):format(REMATCH_WINDOW)
-
     -- Slide the panel in, then count up score, then chain.
     local slideTween = slideIn()
     currentStatsThread = task.spawn(function()
@@ -420,21 +405,9 @@ matchEndRemote.OnClientEvent:Connect(function(event)
         currentStatsThread = nil
     end)
 
-    -- Rematch window countdown.
-    local started = os.clock()
-    currentCountdownThread = task.spawn(function()
-        while screen.Enabled do
-            local remaining = REMATCH_WINDOW - (os.clock() - started)
-            if remaining <= 0 then
-                countdown.Text = "rematch window closed"
-                setButtonEnabled(rematchBtn, false)
-                break
-            end
-            countdown.Text = ("rematch closes in %ds"):format(math.ceil(remaining))
-            task.wait(0.2)
-        end
-        currentCountdownThread = nil
-    end)
+    -- No rematch-window countdown; panel waits indefinitely for an explicit
+    -- REMATCH or LEAVE click. Engineer's server change removes the matching
+    -- auto-close so the room doesn't disappear underneath the player either.
 end)
 
 --------------------------------------------------------------------------------
@@ -448,7 +421,6 @@ rematchBtn.MouseButton1Click:Connect(function()
     squish(rematchScale)
     rematchRemote:FireServer({})
     setButtonEnabled(rematchBtn, false)
-    countdown.Text = "waiting for opponent..."
 end)
 
 leaveBtn.MouseButton1Click:Connect(function()
