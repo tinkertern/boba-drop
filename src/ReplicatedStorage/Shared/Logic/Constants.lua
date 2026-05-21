@@ -52,5 +52,6 @@ Constants.QUEUE_TIMEOUT = 60
 
 -- Match
 Constants.ROUNDS_TO_WIN = 1 -- single round determines the match
+Constants.ROUND_START_COUNTDOWN = 3 -- seconds between matchmake and first piece spawn (3-2-1-GO)
 
 return Constants

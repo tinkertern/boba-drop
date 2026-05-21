@@ -84,6 +84,14 @@ function GameState:startRound()
     end
 end
 
+function GameState:announceRoundStartCountdown(startsAt)
+    -- Fired by RoomManager just before the ROUND_START_COUNTDOWN wait so the
+    -- StateSync subscriber can FireClient the 3-2-1-GO overlay end timestamp
+    -- to both players. Kept here (not in RoomManager) so all renderer-facing
+    -- events flow through the GameState pub/sub like every other event.
+    self:_dispatch("onRoundStartCountdown", { startsAt = startsAt })
+end
+
 function GameState:_otherPlayer(playerId)
     for _, p in self._players do
         if p ~= playerId then return p end
@@ -355,18 +363,22 @@ function GameState:_lockPiece(playerId)
             self._bestChain[playerId] = result.chainLength
         end
 
+        -- Convert chain length to outgoing garbage. Compute BEFORE dispatch so
+        -- the renderer's "→ N ICE!" floating text can read it off ChainCompleted
+        -- directly instead of duplicating the table lookup.
+        local outgoing = Constants.GARBAGE_TABLE[result.chainLength] or Constants.GARBAGE_CAP
+        if result.chainLength >= 6 then outgoing = Constants.GARBAGE_CAP end
+
         self:_dispatch("onChainResolved", {
             playerId = playerId,
             chainLength = result.chainLength,
             totalPopped = result.totalPopped,
             scoreAdded = scoreAdded,
+            garbageOut = outgoing,
             steps = result.steps,
             cells = self:_boardSnapshot(playerId),
         })
 
-        -- Convert chain length to outgoing garbage and route through counter logic
-        local outgoing = Constants.GARBAGE_TABLE[result.chainLength] or Constants.GARBAGE_CAP
-        if result.chainLength >= 6 then outgoing = Constants.GARBAGE_CAP end
         if outgoing > 0 then
             self:applyOutgoingChain(playerId, outgoing)
         end

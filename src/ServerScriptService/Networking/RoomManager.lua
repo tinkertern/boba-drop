@@ -1,6 +1,7 @@
 -- src/ServerScriptService/Networking/RoomManager.lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local GameState = require(ReplicatedStorage.Shared.Logic.GameState)
 local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
@@ -54,12 +55,22 @@ function RoomManager:_startRoom(p1, p2)
     self._rematchVotes[room] = {}
     p1:SetAttribute("GameState", "in_match")
     p2:SetAttribute("GameState", "in_match")
-    -- Wire subscribers (StateSync, etc.) BEFORE startRound so the initial
-    -- onPieceSpawned events are not dropped. Prior poll-based attach (500ms)
-    -- raced with this synchronous startRound call.
+    -- Wire subscribers (StateSync, etc.) BEFORE the countdown dispatch so the
+    -- onRoundStartCountdown event reaches the clients. Also before startRound
+    -- so the initial onPieceSpawned events aren't dropped.
     self:_fireRoomReady(room)
-    gs:startRound()
+    self:_runCountdownThenStart(gs)
     print("[RoomManager] room started: " .. p1.Name .. " vs " .. p2.Name)
+end
+
+function RoomManager:_runCountdownThenStart(gs)
+    -- Broadcast the countdown end timestamp, wait the configured duration,
+    -- then spawn pieces. Both clients animate 3-2-1-GO against the timestamp.
+    -- Input + gravity stay inert during the wait because no active piece exists.
+    local startsAt = Workspace:GetServerTimeNow() + Constants.ROUND_START_COUNTDOWN
+    gs:announceRoundStartCountdown(startsAt)
+    task.wait(Constants.ROUND_START_COUNTDOWN)
+    gs:startRound()
 end
 
 function RoomManager:roomOf(player)
@@ -107,9 +118,9 @@ function RoomManager:registerRematchVote(player, accept)
             for _, p in room.players do
                 if p and p.Parent then p:SetAttribute("GameState", "in_match") end
             end
-            -- Re-wire the new GameState's subscribers before startRound.
+            -- Re-wire the new GameState's subscribers before the countdown.
             self:_fireRoomReady(room)
-            room.gameState:startRound()
+            self:_runCountdownThenStart(room.gameState)
         end
     else
         -- Leave
