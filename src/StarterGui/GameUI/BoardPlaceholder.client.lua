@@ -411,9 +411,10 @@ end
 local roundEndRemote = Remotes:WaitForChild("RoundEnd", 10)
 if roundEndRemote then
     roundEndRemote.OnClientEvent:Connect(function(event)
-        print(("[BoardRenderer] RoundEnd received reason=%s winnerId=%s"):format(
+        print(("[BoardRenderer] RoundEnd received reason=%s winner=%s loser=%s"):format(
             fmtVal(event and event.reason),
-            fmtVal(event and event.winnerId)
+            fmtVal(event and event.winner),
+            fmtVal(event and event.loser)
         ))
         clearAll()
     end)
