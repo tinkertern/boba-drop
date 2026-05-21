@@ -23,6 +23,7 @@ local AMBIENT_ASSET_ID = "rbxassetid://9046862282"
 
 local DEFAULT_VOLUME = 0.15
 local VOLUME_ATTRIBUTE = "BobaDropMusicVolume"
+local ENABLED_ATTRIBUTE = "BobaDropMusicEnabled"
 
 local function clampVolume(v)
     if typeof(v) ~= "number" then return DEFAULT_VOLUME end
@@ -39,6 +40,15 @@ local function resolveVolume()
     return clampVolume(attr)
 end
 
+-- BobaDropMusicEnabled defaults to true. The Settings panel writes this
+-- attribute when the player flips the "PLAY MUSIC" toggle, and we
+-- pause/resume playback here so the change is immediate.
+local function resolveEnabled()
+    local attr = player:GetAttribute(ENABLED_ATTRIBUTE)
+    if typeof(attr) ~= "boolean" then return true end
+    return attr
+end
+
 local sound = Instance.new("Sound")
 sound.Name = "BobaDropAmbientLoop"
 sound.SoundId = AMBIENT_ASSET_ID
@@ -46,18 +56,34 @@ sound.Looped = true
 sound.Volume = resolveVolume()
 sound.Parent = SoundService
 
-sound:Play()
+if resolveEnabled() then
+    sound:Play()
+end
 
--- Runtime volume control. The future Settings panel will set this attribute
--- on the LocalPlayer; we listen here so changes take effect immediately
--- without needing to restart playback.
+-- Runtime volume control. The Settings panel sets this attribute on the
+-- LocalPlayer; we listen here so changes take effect immediately without
+-- needing to restart playback.
 player:GetAttributeChangedSignal(VOLUME_ATTRIBUTE):Connect(function()
     sound.Volume = resolveVolume()
 end)
 
+-- Runtime enable / disable. Pause keeps the playback position so when the
+-- player flips music back on, the loop resumes where it left off rather
+-- than re-streaming from the start.
+player:GetAttributeChangedSignal(ENABLED_ATTRIBUTE):Connect(function()
+    if resolveEnabled() then
+        sound:Resume()
+    else
+        sound:Pause()
+    end
+end)
+
 -- Safety net: if the asset fails to stream in or stops for any reason, kick
--- it back on. Looped = true normally handles this, but Roblox occasionally
--- pauses sounds on focus loss or network hiccups.
+-- it back on, but only if music is currently enabled. Looped = true normally
+-- handles this; Roblox occasionally pauses sounds on focus loss or network
+-- hiccups.
 sound.Ended:Connect(function()
-    sound:Play()
+    if resolveEnabled() then
+        sound:Play()
+    end
 end)

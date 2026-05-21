@@ -479,6 +479,98 @@ themesBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Settings (gear) button: sits to the left of the Themes button. Same
+-- behavior pattern as Themes: full color-swap between enabled / disabled
+-- while the queue is active so the affordance is unambiguous. Opens the
+-- Settings modal via _G.BobaDropSettings.
+local SETTINGS_WIDTH = 36
+local THEMES_RIGHT_INSET = 56          -- existing themes button right inset
+local THEMES_WIDTH = 132               -- matches themesBtn.Size above
+local GAP = 8
+
+local settingsBtn = Instance.new("TextButton")
+settingsBtn.Name = "SettingsBtn"
+settingsBtn.Size = UDim2.fromOffset(SETTINGS_WIDTH, 36)
+settingsBtn.Position = UDim2.new(1, -(THEMES_RIGHT_INSET + THEMES_WIDTH + GAP), 0, 16)
+settingsBtn.AnchorPoint = Vector2.new(1, 0)
+settingsBtn.AutoButtonColor = false
+settingsBtn.BorderSizePixel = 0
+settingsBtn.BackgroundColor3 = UIConstants.Colors.Peach
+settingsBtn.TextColor3 = UIConstants.Colors.TextDark
+settingsBtn.FontFace = UIConstants.Fonts.Display
+settingsBtn.TextSize = 20
+-- Unicode gear glyph. FredokaOne doesn't ship symbol glyphs but Roblox
+-- falls back through the system font for missing codepoints, so the gear
+-- renders cleanly on every platform.
+settingsBtn.Text = "\u{2699}"
+settingsBtn.Parent = screenGui
+
+local settingsCorner = Instance.new("UICorner")
+settingsCorner.CornerRadius = UIConstants.Corners.Button
+settingsCorner.Parent = settingsBtn
+
+local settingsStroke = Instance.new("UIStroke")
+settingsStroke.Color = UIConstants.Colors.StrokeWarm
+settingsStroke.Thickness = 1.5
+settingsStroke.Transparency = 0.4
+settingsStroke.Parent = settingsBtn
+
+local settingsScale = Instance.new("UIScale")
+settingsScale.Scale = 1
+settingsScale.Parent = settingsBtn
+
+local function applySettingsEnabled()
+    local enabled = not queueActive
+    settingsBtn.AutoButtonColor = enabled
+    if enabled then
+        settingsBtn.BackgroundColor3 = UIConstants.Colors.Peach
+        settingsBtn.TextColor3 = UIConstants.Colors.TextDark
+        settingsBtn.BackgroundTransparency = 0
+        settingsBtn.TextTransparency = 0
+        settingsStroke.Color = UIConstants.Colors.StrokeWarm
+        settingsStroke.Transparency = 0.3
+    else
+        settingsBtn.BackgroundColor3 = UIConstants.Colors.Cream
+        settingsBtn.TextColor3 = UIConstants.Colors.TextSoft
+        settingsBtn.BackgroundTransparency = 0.15
+        settingsBtn.TextTransparency = 0.2
+        settingsStroke.Color = UIConstants.Colors.StrokeSoft
+        settingsStroke.Transparency = 0.55
+    end
+end
+applySettingsEnabled()
+
+-- GameState binding: the gear is only meaningful in lobby. Hide it (and
+-- close the modal if it's open) the moment the player enters a match so
+-- the in-match HUD stays uncluttered. The modal itself remains closeable
+-- any time it's open even if state transitions mid-open.
+local function refreshSettingsVisibility()
+    local state = player:GetAttribute("GameState") or "lobby"
+    settingsBtn.Visible = (state == "lobby")
+    if state ~= "lobby" and _G.BobaDropSettings then
+        _G.BobaDropSettings.close()
+    end
+end
+refreshSettingsVisibility()
+player:GetAttributeChangedSignal("GameState"):Connect(refreshSettingsVisibility)
+
+-- Poll queueActive once per second so the gear updates after the 60s
+-- timeout flips queueActive to false. Mirrors the Themes pattern.
+task.spawn(function()
+    while settingsBtn.Parent do
+        applySettingsEnabled()
+        task.wait(0.5)
+    end
+end)
+
+settingsBtn.MouseButton1Click:Connect(function()
+    if queueActive then return end
+    squish(settingsScale)
+    if _G.BobaDropSettings then
+        _G.BobaDropSettings.open()
+    end
+end)
+
 -- ── Debug toggle ────────────────────────────────────────────────────────
 -- Tiny corner button to force-show the tutorial card during testing.
 -- Safe to delete this whole block once the tutorial visuals are settled.
