@@ -34,6 +34,11 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "Lobby"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = UIConstants.ZOrder.Tutorial
+-- Global ZIndex so the queue pill's child labels can sit above the pearl
+-- field deterministically. With the default Sibling behavior, the pearl
+-- container's children were getting drawn over the queue pill's text in
+-- the bundle that added the ambient pearls.
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 screenGui.Parent = playerGui
 
 --------------------------------------------------------------------------------
@@ -208,6 +213,7 @@ statusBlock.Name = "Status"
 statusBlock.Size = UDim2.new(1, -168, 1, 0)
 statusBlock.Position = UDim2.fromOffset(0, 0)
 statusBlock.BackgroundTransparency = 1
+statusBlock.ZIndex = 11
 statusBlock.Parent = queuePanel
 
 local queueLabel = Instance.new("TextLabel")
@@ -222,6 +228,7 @@ queueLabel.TextXAlignment = Enum.TextXAlignment.Left
 queueLabel.TextYAlignment = Enum.TextYAlignment.Center
 queueLabel.TextWrapped = false
 queueLabel.Text = "Searching for opponent..."
+queueLabel.ZIndex = 12
 queueLabel.Parent = statusBlock
 
 local subtitleLabel = Instance.new("TextLabel")
@@ -236,6 +243,7 @@ subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 subtitleLabel.TextYAlignment = Enum.TextYAlignment.Top
 subtitleLabel.TextWrapped = true
 subtitleLabel.Text = "0s"
+subtitleLabel.ZIndex = 12
 subtitleLabel.Parent = statusBlock
 
 local cancelBtn = Instance.new("TextButton")
@@ -250,6 +258,7 @@ cancelBtn.TextColor3 = UIConstants.Colors.TextOnWarm
 cancelBtn.FontFace = UIConstants.Fonts.Display
 cancelBtn.TextSize = UIConstants.TextSizes.Body
 cancelBtn.Text = "Cancel"
+cancelBtn.ZIndex = 12
 cancelBtn.Parent = queuePanel
 
 local cancelCorner = Instance.new("UICorner")
