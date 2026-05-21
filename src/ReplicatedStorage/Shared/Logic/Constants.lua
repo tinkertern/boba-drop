@@ -50,6 +50,6 @@ Constants.REMATCH_LEAVE_COOLDOWN = 1
 Constants.QUEUE_TIMEOUT = 60
 
 -- Match
-Constants.ROUNDS_TO_WIN = 2 -- best of 3
+Constants.ROUNDS_TO_WIN = 1 -- single round determines the match
 
 return Constants
