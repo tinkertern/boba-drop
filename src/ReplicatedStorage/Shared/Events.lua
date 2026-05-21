@@ -15,7 +15,7 @@ Events.Names = {
     ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }
     NextPieceQueueUpdate = "NextPieceQueueUpdate", -- payload: { playerId, isLocal, queue = [{ a, b }, { a, b }] } — next 2 pairs from the player's bag, non-destructive peek
     PieceLocked = "PieceLocked",   -- payload: { playerId, a, b, aRow, aCol, bRow, bCol, cells = post-gravity board snapshot }
-    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, garbageOut, isLocal, cells = post-chain snapshot, steps = [{ popped, colors, cellsPopped = [{row, col, color}, ...] }, ...] }
+    ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, garbageOut, isLocal, cells = post-chain snapshot, steps = [{ popped, colors, cellsPopped = [{row, col, color}, ...], garbageCleared = [{row, col}, ...] }, ...] }
     RoundStartCountdown = "RoundStartCountdown", -- payload: { startsAt = workspace:GetServerTimeNow() + ROUND_START_COUNTDOWN } — clients sync the 3-2-1-GO overlay to this end timestamp
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
     GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number, cellsDropped = [{ row, col }, ...] }

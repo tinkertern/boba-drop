@@ -82,16 +82,28 @@ t.describe("ChainResolver", function()
         t.assertEq(result.totalPopped, 12)
     end)
 
-    t.it("garbage cubes survive a chain pop adjacent to them", function()
+    t.it("garbage adjacent to a popped group is cleared (neighbour-clear rule)", function()
         local b = newBoard()
         for c = 1, 4 do b:placeAt(1, c, "Pink") end
-        b:placeAt(2, 1, "Garbage")
-        b:placeAt(2, 2, "Garbage")
+        b:placeAt(2, 1, "Garbage") -- directly above a popped Pink
+        b:placeAt(2, 2, "Garbage") -- directly above a popped Pink
+        b:placeAt(1, 5, "Garbage") -- directly right of the rightmost popped Pink
         local result = ChainResolver.resolve(b)
         t.assertEq(result.chainLength, 1)
-        -- Garbage cubes should fall (gravity) but remain present
-        t.assertEq(b:cellAt(1, 1), "Garbage")
-        t.assertEq(b:cellAt(1, 2), "Garbage")
+        t.assertEq(result.totalPopped, 4, "popped counts colors only, not garbage")
+        t.assertEq(#result.steps[1].garbageCleared, 3, "all three orthogonally-adjacent garbage cleared")
+        t.assertEq(b:cellAt(1, 1), nil, "garbage at (2,1) cleared then would fall; board now empty there")
+    end)
+
+    t.it("garbage that is only diagonally adjacent to a popped group is NOT cleared", function()
+        local b = newBoard()
+        for c = 1, 4 do b:placeAt(1, c, "Pink") end
+        -- Garbage at (2, 5) is diagonal to the popped Pink at (1, 4). Orthogonal only.
+        b:placeAt(2, 5, "Garbage")
+        local result = ChainResolver.resolve(b)
+        t.assertEq(result.chainLength, 1)
+        t.assertEq(#result.steps[1].garbageCleared, 0, "diagonal adjacency does not count")
+        t.assertEq(b:cellAt(1, 5), "Garbage", "the lone garbage falls to row 1 col 5 and survives")
     end)
 end)
 
