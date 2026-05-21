@@ -1,6 +1,6 @@
 # 🍡 Boba Drop
 
-A cozy 1v1 falling-block duel on Roblox. Match 4+ same-color boba pearls to pop them, chain reactions to send ice-cube garbage to your opponent's cup. First to overflow loses. Best of 3.
+A cozy 1v1 falling-block duel on Roblox. Match 4+ same-color boba pearls to pop them, chain reactions to send ice-cube garbage to your opponent's cup. First to overflow loses.
 
 <!-- gameplay-clip placeholder; filled in after Friday capture -->
 <!-- [gameplay clip: 30s of chains, garbage exchange, counter cancel] -->
@@ -51,10 +51,16 @@ src/
       InputHandler.client.lua  keyboard + touch → RemoteEvents
   StarterGui/
     Backdrop/                full-screen warm cream backdrop
-    Lobby/                   tutorial card + queue pill + Themes button
-    GameUI/                  Board, Score, ChainCounter, GarbagePreview, CounterCancel
-    MatchEnd/                results screen + rematch flow
+    Audio/                   ambient music playlist (cycles 4 tracks)
+    MainMenu/                title, PLAY, Themes, Settings, How-to-play, drifting pearls
+    Lobby/                   queue pill while matching (slides up from below)
+    GameUI/                  Board, Score, ChainCounter, GarbagePreview, NextPiecePreview, OpponentBoard, CounterCancel
+    HowToPlay/               in-match `?` overlay (controls / goal / tips)
+    Settings/                music + SFX volume sliders, music toggle
     Shop/                    Premium Themes Pack modal
+    MatchEnd/                results screen + rematch flow
+    PauseConfirm/            in-match LEAVE pill + confirm modal
+    CountdownOverlay/        3-2-1-GO! round-start scrim
     UIStateController.client.lua  drives ScreenGui.Enabled per GameState
 
 tests/                       Lune-runnable .spec.lua files
