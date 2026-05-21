@@ -172,6 +172,12 @@ function GameState:_spawnPiece(playerId)
         pivotCol = SPAWN_COL,
         orientation = 0,
     })
+    -- Surface the next-piece preview after every spawn (the bag just advanced).
+    -- Producer's renderer binds this to the next-piece HUD; peek is non-destructive.
+    self:_dispatch("onNextPieceQueue", {
+        playerId = playerId,
+        queue = board:peek(2),
+    })
 end
 
 local function cellsOf(piece)

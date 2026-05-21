@@ -21,6 +21,7 @@ function StateSync.new(roomManager)
     self._matchEndRemote = getRemote(Events.Names.MatchEnd)
     self._pieceLockedRemote = getRemote(Events.Names.PieceLocked)
     self._activePieceRemote = getRemote(Events.Names.ActivePieceUpdate)
+    self._nextQueueRemote = getRemote(Events.Names.NextPieceQueueUpdate)
     -- Synchronous wiring: RoomManager fires onRoomReady AFTER GameState exists
     -- but BEFORE startRound, so the first onPieceSpawned dispatch has subscribers.
     roomManager:onRoomReady(function(room) self:wireRoom(room) end)
@@ -91,6 +92,16 @@ function StateSync:wireRoom(room)
     end
     gs:subscribe("onPieceSpawned", fireActivePiece)
     gs:subscribe("onPieceMoved", fireActivePiece)
+    gs:subscribe("onNextPieceQueue", function(event)
+        if not self._nextQueueRemote then return end
+        for _, p in room.players do
+            self._nextQueueRemote:FireClient(p, {
+                playerId = event.playerId,
+                isLocal = (tostring(p.UserId) == event.playerId),
+                queue = event.queue,
+            })
+        end
+    end)
     gs:subscribe("onGarbageIncoming", function(event)
         for _, p in room.players do
             self._garbageInRemote:FireClient(p, event)
