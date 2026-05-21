@@ -283,16 +283,22 @@ function GameState:applyInput(playerId, input)
 end
 
 function GameState:_boardSnapshot(playerId)
-    -- Deep copy of cells[row][col] = colorName | nil. Producer's renderer
-    -- consumes this on PieceLocked and ChainCompleted to paint declaratively
-    -- without maintaining a shadow grid.
+    -- Deep copy of cells[row][col] = colorName | false. Producer's renderer
+    -- consumes this on PieceLocked and ChainCompleted to paint declaratively.
+    --
+    -- Empty cells are serialized as `false` (not `nil`) so each row is a
+    -- DENSE array with sequential integer keys. This sidesteps Roblox's
+    -- RemoteEvent serializer which uses `#row` (stops at first nil) to
+    -- decide "array vs dict" — a sparse row like {[1]="Brown", [3]="Pink"}
+    -- gets truncated to ["Brown"] over the wire, silently dropping [3].
+    -- Client treats `false` as "empty" (same as nil).
     local board = self._boards[playerId]
     if not board then return nil end
     local snap = {}
     for r = 1, board.height do
         snap[r] = {}
         for c = 1, board.width do
-            snap[r][c] = board.cells[r][c]
+            snap[r][c] = board.cells[r][c] or false
         end
     end
     return snap
