@@ -37,6 +37,7 @@ UIConstants.Colors = {
     -- Garbage (cute, not threatening — pastel blue ice)
     IceBase = Color3.fromRGB(180, 215, 235),
     IceFrost = Color3.fromRGB(225, 240, 250),
+    GarbageBlock = Color3.fromRGB(180, 215, 235),  -- same as IceBase, used for in-cup garbage pearls
     GarbageWarning = Color3.fromRGB(255, 168, 168),  -- soft worry-pink, not panic-red
 
     -- Chain counter gradient (peach → coral, celebratory)

@@ -520,6 +520,13 @@ if pieceLockedRemote then
         -- then repaint locked state from the post-settle snapshot.
         clearActivePearls()
         if event.cells then
+            -- Reconcile first so any locked pearl now absent from the snapshot
+            -- (e.g., a garbage-applied gravitySettle moved cells) is destroyed
+            -- before we additively repaint. Engineer's dense snapshot fix
+            -- (393b098) makes the snapshot reliable enough to trust for this.
+            -- Without this step, partner pearls that gravity-settled into a
+            -- different column would visually float at their pre-settle row.
+            reconcileLockedToSnapshot(event.cells)
             paintFromSnapshot(event.cells)
         else
             -- Pre-snapshot fallback: paint the two locked cells individually.
