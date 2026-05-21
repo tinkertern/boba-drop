@@ -31,15 +31,33 @@ local DANGER_ROW = BOARD_VISIBLE_HEIGHT
 -- Diagnostic helpers. Internal only: prints/warns go to the Studio Output
 -- window so Sarah can paste them back when something looks off. Tag every
 -- line with [BoardRenderer] so it's greppable.
+-- Roblox RemoteEvent marshalling converts sparse-keyed tables to dictionaries
+-- with string keys. snap[r] = {[3]="Pink"} on the server arrives as
+-- snap[r] = {["3"]="Pink"} on the client. Direct integer lookup misses it.
+-- Always try the string-key fallback when looking up a snapshot cell.
+local function cellLookup(rowTable, c)
+    if rowTable == nil then return nil end
+    local v = rowTable[c]
+    if v ~= nil then return v end
+    return rowTable[tostring(c)]
+end
+
+local function rowLookup(cells, r)
+    if cells == nil then return nil end
+    local v = cells[r]
+    if v ~= nil then return v end
+    return cells[tostring(r)]
+end
+
 local function countCells(cells)
     if type(cells) ~= "table" then return 0, 0 end
     local rowCount, cellCount = 0, 0
     for r = 1, BOARD_TOTAL_HEIGHT do
-        local rowTable = cells[r]
+        local rowTable = rowLookup(cells, r)
         if rowTable ~= nil then
             rowCount += 1
             for c = 1, BOARD_WIDTH do
-                if rowTable[c] then cellCount += 1 end
+                if cellLookup(rowTable, c) then cellCount += 1 end
             end
         end
     end
@@ -279,11 +297,11 @@ end
 local function paintFromSnapshot(cells)
     if type(cells) ~= "table" then return end
     for row = 1, BOARD_TOTAL_HEIGHT do
-        local rowTable = cells[row]
+        local rowTable = rowLookup(cells, row)
         for col = 1, BOARD_WIDTH do
             local key = posKey(row, col)
             local existingLocked = lockedPearls[key]
-            local snapshotColor = rowTable and rowTable[col]
+            local snapshotColor = cellLookup(rowTable, col)
             if snapshotColor then
                 if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
                 local pearl = buildPearl(cellsByPos[key], colorForServerName(snapshotColor), false)
