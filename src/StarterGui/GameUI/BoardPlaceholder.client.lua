@@ -971,6 +971,23 @@ if chainCompletedRemote then
                             end
                         end
                     end
+                    -- Garbage neighbour-clear: Engineer 0f55c5d added
+                    -- step.garbageCleared listing ice cubes that were cleared
+                    -- as a side-effect of adjacent color pops. Reuse the same
+                    -- pop animation so they shatter on the same per-step beat
+                    -- as the colors that broke them.
+                    local garbageCleared = step.garbageCleared
+                    if type(garbageCleared) == "table" then
+                        for _, gcEntry in ipairs(garbageCleared) do
+                            if type(gcEntry) == "table" then
+                                local r = gcEntry.row or gcEntry[1]
+                                local c = gcEntry.col or gcEntry[2]
+                                if type(r) == "number" and type(c) == "number" and lockedPearls[posKey(r, c)] then
+                                    totalDestroyed += 1
+                                end
+                            end
+                        end
+                    end
                     -- Spawn per step so staggered timing doesn't block the main thread.
                     task.spawn(function()
                         if i > 1 then
@@ -981,6 +998,17 @@ if chainCompletedRemote then
                                 if type(popEntry) == "table" then
                                     local r = popEntry.row or popEntry[1]
                                     local c = popEntry.col or popEntry[2]
+                                    if type(r) == "number" and type(c) == "number" then
+                                        animatePopThenDestroy(r, c, i)
+                                    end
+                                end
+                            end
+                        end
+                        if type(garbageCleared) == "table" then
+                            for _, gcEntry in ipairs(garbageCleared) do
+                                if type(gcEntry) == "table" then
+                                    local r = gcEntry.row or gcEntry[1]
+                                    local c = gcEntry.col or gcEntry[2]
                                     if type(r) == "number" and type(c) == "number" then
                                         animatePopThenDestroy(r, c, i)
                                     end
