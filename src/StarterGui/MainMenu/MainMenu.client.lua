@@ -24,10 +24,12 @@ local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Defensive lookup. If the engineer's server changes haven't merged yet,
--- the remote may not exist. Log a warning and let PLAY no-op instead of
--- crashing the whole client.
-local enterQueueRemote = ReplicatedStorage:WaitForChild("EnterQueue", 30)
+-- Defensive lookup. The remote lives at ReplicatedStorage.Remotes.EnterQueue
+-- (matches the convention used by InputHandler, BoardPlaceholder, etc).
+-- If the engineer's server piece hasn't merged yet, log a warning and let
+-- PLAY no-op instead of crashing.
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+local enterQueueRemote = Remotes and Remotes:WaitForChild("EnterQueue", 30)
 if not enterQueueRemote then
     warn("[MainMenu] Remotes.EnterQueue not found within 30s. PLAY will no-op until the server piece lands.")
 end
