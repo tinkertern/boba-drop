@@ -258,21 +258,6 @@ function GameState:applyInput(playerId, input)
             self:_dispatch("onPieceMoved", { playerId = playerId, piece = piece })
         end
         -- No wallkick per design.md known limitations.
-    elseif input.type == "softDrop" then
-        if input.held then
-            local candidate = {
-                a = piece.a, b = piece.b,
-                pivotRow = piece.pivotRow - 1,
-                pivotCol = piece.pivotCol,
-                orientation = piece.orientation,
-            }
-            if self:_pieceFits(playerId, candidate) then
-                piece.pivotRow = candidate.pivotRow
-                self:_dispatch("onPieceMoved", { playerId = playerId, piece = piece })
-            else
-                self:_lockPiece(playerId)
-            end
-        end
     elseif input.type == "hardDrop" then
         local dist = self:_dropDistance(playerId, piece)
         piece.pivotRow -= dist

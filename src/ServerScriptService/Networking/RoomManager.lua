@@ -17,7 +17,20 @@ function RoomManager.new()
     self._playerRoom = {} -- playerId → room
     self._rematchVotes = {} -- room → { [playerId] = boolean }
     self._roomReadyListeners = {} -- fired with (room) AFTER GameState exists but BEFORE startRound
+    self._softDropping = {} -- [userId] = true while the Down/S key is held; driven by softDropRemote
     return self
+end
+
+function RoomManager:setSoftDrop(player, held)
+    -- Server-side latch for "is this player currently holding soft drop?". The
+    -- fast-tick loop in Main.server.lua reads this every GRAVITY_BASE/SOFT_DROP_MULT
+    -- seconds and injects an extra tick if true, producing sustained 8x gravity
+    -- instead of the previous "one row per keypress" behaviour.
+    self._softDropping[player.UserId] = held and true or nil
+end
+
+function RoomManager:isSoftDropping(userId)
+    return self._softDropping[userId] == true
 end
 
 function RoomManager:onRoomReady(fn)
@@ -151,6 +164,7 @@ end
 function RoomManager:_closeRoom(room)
     for _, p in room.players do
         self._playerRoom[p.UserId] = nil
+        self._softDropping[p.UserId] = nil
         if p.Parent then
             -- Match end / Leave returns the player to the main menu. No auto
             -- re-enqueue — re-entering the queue requires a fresh PLAY click

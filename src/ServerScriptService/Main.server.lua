@@ -53,7 +53,7 @@ if Remotes then
     if softDropRemote then
         softDropRemote.OnServerEvent:Connect(function(player, payload)
             payload = payload or {}
-            roomManager:applyInput(player, { type = "softDrop", held = payload.held == true })
+            roomManager:setSoftDrop(player, payload.held == true)
         end)
     end
     if hardDropRemote then
@@ -98,6 +98,27 @@ task.spawn(function()
                     if player and player.Parent then
                         room.gameState:applyInput(tostring(player.UserId), { type = "tick" })
                     end
+                end
+            end
+        end
+    end
+end)
+
+-- ----- Soft drop driver -----
+-- While a player holds Down/S, the client fires softDropRemote with held=true,
+-- which sets the server-side _softDropping latch. This loop reads that latch at
+-- GRAVITY_BASE/SOFT_DROP_MULT cadence and injects an extra tick into the player's
+-- GameState — producing sustained ~8x gravity for as long as the key is held.
+-- InputEnded fires held=false → latch clears → loop stops injecting.
+task.spawn(function()
+    local interval = Constants.GRAVITY_BASE / Constants.SOFT_DROP_MULT
+    while true do
+        task.wait(interval)
+        for userId, held in roomManager._softDropping do
+            if held then
+                local room = roomManager._playerRoom[userId]
+                if room and room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
+                    room.gameState:applyInput(tostring(userId), { type = "tick" })
                 end
             end
         end
