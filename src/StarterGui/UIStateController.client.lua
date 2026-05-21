@@ -2,14 +2,14 @@
 -- visible based on the player's GameState attribute.
 --
 -- Read player:GetAttribute("GameState") which is one of:
---   "lobby"     — pre-queue lobby. Tutorial + Themes + (nothing else).
---   "matching"  — queue pill is up but no match yet. Same screens as lobby.
---   "in_match"  — gameplay is live. Board + HUD pieces visible, lobby hidden.
---   "match_end" — results panel on top of (still-visible) board. Lobby hidden.
+--   "main_menu" — pre-queue landing screen. MainMenu is the only Enabled UI.
+--   "matching"  — queue pill is up. Lobby is Enabled, MainMenu hides.
+--   "in_match"  — gameplay is live. Board + HUD pieces visible, menu + lobby hidden.
+--   "match_end" — results panel on top of (still-visible) board. Menu + lobby hidden.
 --
--- The server (RoomManager → StateSync) is the writer for this attribute.
--- Client default until the server writes is "lobby" so first frame after spawn
--- shows the lobby UI, not a blank screen.
+-- The server (RoomManager -> StateSync) is the writer for this attribute.
+-- Client default until the server writes is "main_menu" so first frame after
+-- spawn shows the landing screen, not a blank screen.
 --
 -- This controller only toggles ScreenGui.Enabled. It does not create, destroy,
 -- or rearrange any GUI. Each existing client script is still responsible for
@@ -21,18 +21,20 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local STATES = {
-    Lobby = "lobby",
+    MainMenu = "main_menu",
     Matching = "matching",
     InMatch = "in_match",
     MatchEnd = "match_end",
 }
 
 -- Visibility map. true = ScreenGui.Enabled, false = disabled.
--- Backdrop + Shop are intentionally absent; they are always enabled and manage
--- their own internal visibility, so the controller leaves them alone.
+-- Backdrop + Shop + Settings + HowToPlay are intentionally absent; they are
+-- always enabled and manage their own internal visibility, so the controller
+-- leaves them alone.
 local VISIBILITY = {
-    [STATES.Lobby] = {
-        Lobby = true,
+    [STATES.MainMenu] = {
+        MainMenu = true,
+        Lobby = false,
         BoardPlaceholder = false,
         ScoreDisplay = false,
         ChainCounter = false,
@@ -41,6 +43,7 @@ local VISIBILITY = {
         MatchEnd = false,
     },
     [STATES.Matching] = {
+        MainMenu = false,
         Lobby = true,
         BoardPlaceholder = false,
         ScoreDisplay = false,
@@ -50,6 +53,7 @@ local VISIBILITY = {
         MatchEnd = false,
     },
     [STATES.InMatch] = {
+        MainMenu = false,
         Lobby = false,
         BoardPlaceholder = true,
         ScoreDisplay = true,
@@ -59,6 +63,7 @@ local VISIBILITY = {
         MatchEnd = false,
     },
     [STATES.MatchEnd] = {
+        MainMenu = false,
         Lobby = false,
         BoardPlaceholder = true, -- board stays visible as backdrop to results
         ScoreDisplay = true,
@@ -69,9 +74,9 @@ local VISIBILITY = {
     },
 }
 
-local currentState = player:GetAttribute("GameState") or STATES.Lobby
+local currentState = player:GetAttribute("GameState") or STATES.MainMenu
 if not VISIBILITY[currentState] then
-    currentState = STATES.Lobby
+    currentState = STATES.MainMenu
 end
 
 local function applyVisibility()
@@ -79,8 +84,8 @@ local function applyVisibility()
     if not map then return end
     -- Iterate by ScreenGui IsA-check, not by FindFirstChild(name): Rojo mirrors
     -- src/StarterGui/<Name>/ as a Folder in PlayerGui with the same name as the
-    -- ScreenGui the inner script creates (Lobby, MatchEnd, Shop, Backdrop all
-    -- collide). FindFirstChild returns whichever child sorts first, which is
+    -- ScreenGui the inner script creates (Lobby, MatchEnd, Shop, Backdrop, MainMenu
+    -- all collide). FindFirstChild returns whichever child sorts first, which is
     -- usually the Folder, so .Enabled silently no-ops and state transitions
     -- after the initial frame stop working.
     for _, gui in playerGui:GetChildren() do

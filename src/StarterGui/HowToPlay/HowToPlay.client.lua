@@ -456,3 +456,11 @@ closeBtn.MouseButton1Click:Connect(function()
     squish(closeScale)
     closeModal()
 end)
+
+-- Exposed on _G.BobaDropHowToPlay so the MainMenu can surface the same modal
+-- from its "?" pill. The in-match "?" button still drives openModal directly;
+-- this is a parallel entry point, not a replacement.
+_G.BobaDropHowToPlay = {
+    open = openModal,
+    close = closeModal,
+}

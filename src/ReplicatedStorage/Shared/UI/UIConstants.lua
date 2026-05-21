@@ -146,6 +146,7 @@ UIConstants.ZOrder = {
     Board = 10,
     GarbageWarning = 50,
     ChainCounter = 60,
+    MainMenu = 75,           -- player-facing landing screen, above HUD but below Tutorial / RoundBanner
     RoundBanner = 80,
     Tutorial = 90,
     ShopOverlay = 100,
