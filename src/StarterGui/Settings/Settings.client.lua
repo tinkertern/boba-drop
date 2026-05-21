@@ -1,4 +1,4 @@
--- Settings modal: music volume, sound fx volume, music on/off toggle, credits.
+-- Settings modal: music volume, sound fx volume, music on/off toggle.
 -- Triggered by the lobby gear icon (top-right, left of the Themes button).
 -- Only visible in lobby GameState; the gear hides + the modal closes when
 -- the player enters a match. Persistence is per-session via LocalPlayer
@@ -416,13 +416,12 @@ local function makeToggle(parent, opts)
 end
 
 --------------------------------------------------------------------------------
--- Component layout: title (top), three rows, credits at the bottom.
+-- Component layout: title (top), three rows. Credits removed 2026-05-21.
 -- Modal interior height after padding is 420 - 24 - 20 = 376.
 --   y =  0  title (40 high)
 --   y = 64  music volume slider (64 high)
 --   y = 140 sfx volume slider     (64 high)
 --   y = 216 music toggle          (40 high)
---   y = 296 credits text          (bottom area)
 --------------------------------------------------------------------------------
 
 local musicSlider = makeSlider(modal, {
@@ -456,20 +455,9 @@ local musicToggle = makeToggle(modal, {
     end,
 })
 
--- Credits line at the bottom of the modal. Small, soft, single-line.
-local credits = Instance.new("TextLabel")
-credits.Name = "Credits"
-credits.Size = UDim2.new(1, 0, 0, 20)
-credits.Position = UDim2.new(0.5, 0, 1, -8)
-credits.AnchorPoint = Vector2.new(0.5, 1)
-credits.BackgroundTransparency = 1
-credits.FontFace = UIConstants.Fonts.Tutorial
-credits.TextSize = UIConstants.TextSizes.SmallButton
-credits.TextColor3 = UIConstants.Colors.TextSoft
-credits.TextXAlignment = Enum.TextXAlignment.Center
-credits.TextYAlignment = Enum.TextYAlignment.Center
-credits.Text = "made by Sarah Yoon, 4-day Roblox sprint, 2026-05-19 to 22"
-credits.Parent = modal
+-- Credits line removed 2026-05-21 to match the MainMenu credit drop
+-- (commit 443ee80). The Settings modal ends at the music toggle row;
+-- bottom padding from modalPadding (20px) is the visual breathing room.
 
 --------------------------------------------------------------------------------
 -- Reflect external attribute changes (e.g. if some other system writes the

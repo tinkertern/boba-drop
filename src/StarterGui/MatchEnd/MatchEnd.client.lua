@@ -103,13 +103,37 @@ header.ZIndex = 3
 header.Parent = panel
 
 --------------------------------------------------------------------------------
+-- Reason subtitle (between header and score row). Populated by the latest
+-- RoundEnd payload so a 0-vs-0 result reads as "your cup overflowed" or
+-- "opponent left" rather than a dry stat row. Hidden when the reason is
+-- unknown so we never render an empty line.
+--------------------------------------------------------------------------------
+
+local reasonRow = Instance.new("TextLabel")
+reasonRow.Name = "ReasonRow"
+reasonRow.Size = UDim2.new(1, 0, 0, 18)
+-- y=84: 12px below the 72-tall header bottom; bottom at y=102 leaves 12px
+-- breathing room above the score row at y=114.
+reasonRow.Position = UDim2.fromOffset(0, 84)
+reasonRow.BackgroundTransparency = 1
+reasonRow.FontFace = UIConstants.Fonts.Tutorial
+reasonRow.TextSize = 16
+reasonRow.TextColor3 = UIConstants.Colors.TextSoft
+reasonRow.TextXAlignment = Enum.TextXAlignment.Center
+reasonRow.TextYAlignment = Enum.TextYAlignment.Center
+reasonRow.Text = ""
+reasonRow.Visible = false
+reasonRow.ZIndex = 3
+reasonRow.Parent = panel
+
+--------------------------------------------------------------------------------
 -- Score row (FINAL: 1234 vs 5678)
 --------------------------------------------------------------------------------
 
 local scoreRow = Instance.new("TextLabel")
 scoreRow.Name = "ScoreRow"
 scoreRow.Size = UDim2.new(1, 0, 0, 44)
-scoreRow.Position = UDim2.fromOffset(0, 92)
+scoreRow.Position = UDim2.fromOffset(0, 114)
 scoreRow.BackgroundTransparency = 1
 scoreRow.FontFace = UIConstants.Fonts.HUD
 scoreRow.TextSize = UIConstants.TextSizes.Score
@@ -126,7 +150,7 @@ scoreRow.Parent = panel
 local chainRow = Instance.new("TextLabel")
 chainRow.Name = "ChainRow"
 chainRow.Size = UDim2.new(1, 0, 0, 28)
-chainRow.Position = UDim2.fromOffset(0, 144)
+chainRow.Position = UDim2.fromOffset(0, 166)
 chainRow.BackgroundTransparency = 1
 chainRow.FontFace = UIConstants.Fonts.HUD
 chainRow.TextSize = 20
@@ -267,12 +291,51 @@ if not remotes then return end
 local rematchName = Events.Names.RematchRequest
 local leaveName = Events.Names.LeaveMatch
 local matchEndName = Events.Names.MatchEnd
+local roundEndName = Events.Names.RoundEnd
 if not (rematchName and leaveName and matchEndName) then return end
 
 local rematchRemote = remotes:WaitForChild(rematchName, 30)
 local leaveRemote = remotes:WaitForChild(leaveName, 30)
 local matchEndRemote = remotes:WaitForChild(matchEndName, 30)
+-- RoundEnd is optional from our perspective: it adds reason copy if present,
+-- but a missing remote shouldn't break the panel. Short WaitForChild so we
+-- don't deadlock startup if RoundEnd is genuinely absent on this build.
+local roundEndRemote = roundEndName and remotes:WaitForChild(roundEndName, 10)
 if not (rematchRemote and leaveRemote and matchEndRemote) then return end
+
+--------------------------------------------------------------------------------
+-- RoundEnd cache: the server fires RoundEnd just before MatchEnd, but only
+-- RoundEnd carries the `reason`/`winner`/`loser` fields we need for the
+-- subtitle ("your cup overflowed" / "opponent left" / ...). Cache the most
+-- recent one and consume it in the MatchEnd handler.
+--------------------------------------------------------------------------------
+
+local lastRoundEnd = nil
+
+if roundEndRemote then
+    roundEndRemote.OnClientEvent:Connect(function(event)
+        if type(event) == "table" then
+            lastRoundEnd = {
+                reason = event.reason,
+                winner = event.winner and tostring(event.winner) or nil,
+                loser = event.loser and tostring(event.loser) or nil,
+            }
+        end
+    end)
+end
+
+-- Map a (reason, didYouWin) pair to friendly copy. Returns nil for unknown
+-- reasons so the row stays hidden (per spec: don't render an empty line).
+-- "disconnect" is treated the same as "forfeit" because the player-facing
+-- outcome is identical: someone left.
+local function friendlyReason(reason, didYouWin)
+    if reason == "overflow" then
+        return didYouWin and "their cup overflowed" or "your cup overflowed"
+    elseif reason == "forfeit" or reason == "disconnect" then
+        return didYouWin and "opponent left" or "you left the match"
+    end
+    return nil
+end
 
 --------------------------------------------------------------------------------
 -- State
@@ -328,6 +391,25 @@ matchEndRemote.OnClientEvent:Connect(function(event)
         result = "lose"
     end
     setHeader(result)
+
+    -- Reason subtitle from the most recent RoundEnd. Prefer RoundEnd's winner
+    -- field for the won/lost determination since RoundEnd is what carries the
+    -- reason; fall back to MatchEnd's winner if RoundEnd never fired.
+    local subtitleText = nil
+    if lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
+        local roundWinnerLocal = (lastRoundEnd.winner == localId)
+            or (lastRoundEnd.winner == nil and winnerId == localId)
+        subtitleText = friendlyReason(lastRoundEnd.reason, roundWinnerLocal)
+    end
+    if subtitleText then
+        reasonRow.Text = subtitleText
+        reasonRow.Visible = true
+    else
+        reasonRow.Text = ""
+        reasonRow.Visible = false
+    end
+    -- Clear the cache so a stale reason can't leak into the next match end.
+    lastRoundEnd = nil
 
     -- Score / chain extraction. Server contract per Engineer is `scores`/`bestChain`;
     -- earlier registry shape used `finalScores`. Read both defensively so we

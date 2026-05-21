@@ -41,8 +41,13 @@ leaveCorner.Position = UDim2.new(1, -16, 0, 16)
 leaveCorner.Size = UDim2.fromOffset(88, 44)
 leaveCorner.AutoButtonColor = false
 leaveCorner.BorderSizePixel = 0
-leaveCorner.BackgroundColor3 = UIConstants.Colors.WarmCancel
-leaveCorner.TextColor3 = UIConstants.Colors.TextOnWarm
+-- Resting state uses Peach (warmer, less aggressive) so a glance at the
+-- top-right pill doesn't read as a panic / "you're about to lose" state.
+-- The destructive confirm button inside the modal still uses WarmCancel,
+-- which keeps the "this is the final commitment" weight on the right
+-- element. Coral / WarmCancel here read as too alarming during normal play.
+leaveCorner.BackgroundColor3 = UIConstants.Colors.Peach
+leaveCorner.TextColor3 = UIConstants.Colors.TextDark
 leaveCorner.FontFace = UIConstants.Fonts.Display
 leaveCorner.TextSize = UIConstants.TextSizes.SmallButton
 leaveCorner.Text = "LEAVE"

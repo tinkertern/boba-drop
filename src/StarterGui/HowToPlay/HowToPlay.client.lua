@@ -81,11 +81,18 @@ scrim.Parent = screen
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
-panel.Position = UDim2.fromScale(0.5, 1.2) -- starts off-screen below
-panel.Size = UDim2.fromOffset(520, 600)
+panel.Position = UDim2.fromScale(0.5, 0.5) -- final centered position; openModal animates the entry
+-- Responsive: 90% screen width up to 520px, 80% screen height up to 600px.
+-- On phone portrait (414w) the modal lands at ~373px wide instead of 520px
+-- bleeding off both edges; on PC the size constraint clamps it back to 520x600.
+panel.Size = UDim2.new(0.9, 0, 0.8, 0)
 panel.BackgroundColor3 = UIConstants.Colors.Cream
 panel.BorderSizePixel = 0
 panel.Parent = scrim
+
+local panelSizeConstraint = Instance.new("UISizeConstraint")
+panelSizeConstraint.MaxSize = Vector2.new(520, 600)
+panelSizeConstraint.Parent = panel
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UIConstants.Corners.Panel
@@ -353,6 +360,9 @@ local function openModal()
     isOpen = true
     scrim.Visible = true
     panel.Visible = true
+    -- Re-seat at off-screen-below before the slide-in tween. AnchorPoint
+    -- (0.5, 0.5) is set at construction; here we just animate Position back
+    -- to centered (0.5, 0.5).
     panel.Position = UDim2.fromScale(0.5, 1.2)
     TweenService:Create(
         panel,
@@ -432,10 +442,12 @@ local function refreshVisibility()
     else
         stopPulse()
         -- If we left the match while modal was open, snap it closed silently.
+        -- Restore Position to centered so the next open tween starts from a
+        -- clean state after the openModal re-seat to (0.5, 1.2).
         if isOpen then
             isOpen = false
             scrim.Visible = false
-            panel.Position = UDim2.fromScale(0.5, 1.2)
+            panel.Position = UDim2.fromScale(0.5, 0.5)
         end
     end
 end
