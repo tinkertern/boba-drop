@@ -294,24 +294,56 @@ end
 -- Touches only the locked pool. The active overlay is owned by
 -- ActivePieceUpdate and is left alone here. Used by PieceLocked and
 -- ChainCompleted, both of which carry the post-event grid.
+--
+-- ADDITIVE ONLY. Roblox RemoteEvent serialization truncates mixed-sparse Lua
+-- tables: a row like {[1]="Brown",[3]="Pink"} has #t==1 so it gets marshalled
+-- as the JSON array ["Brown"], silently dropping [3]="Pink" on the wire. If we
+-- destroyed cells absent from the incoming snapshot, locked pearls in
+-- non-contiguous columns would disappear on every subsequent lock. So this
+-- function only paints/updates cells the snapshot explicitly contains.
+-- Destruction is the caller's job: ChainCompleted uses event.steps[i].cellsPopped,
+-- RoundEnd uses clearAll(). PieceLocked never destroys via this path.
 local function paintFromSnapshot(cells)
     if type(cells) ~= "table" then return end
     for row = 1, BOARD_TOTAL_HEIGHT do
         local rowTable = rowLookup(cells, row)
         for col = 1, BOARD_WIDTH do
-            local key = posKey(row, col)
-            local existingLocked = lockedPearls[key]
             local snapshotColor = cellLookup(rowTable, col)
             if snapshotColor then
+                local key = posKey(row, col)
+                local existingLocked = lockedPearls[key]
                 if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
                 local pearl = buildPearl(cellsByPos[key], colorForServerName(snapshotColor), false)
                 lockedPearls[key] = { pearl = pearl, kind = "locked" }
-            else
-                if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
-                lockedPearls[key] = nil
             end
         end
     end
+end
+
+-- Explicit destruction path for chain pops. Server's ChainCompleted payload
+-- carries per-step cellsPopped (list of {row, col, color}) since commit 44e7003.
+-- Iterating these and clearing locked pearls at each coordinate is robust to
+-- the snapshot truncation issue, because the popped coordinates are sent as a
+-- list (not a sparse 2D table) so Roblox marshalling preserves them.
+local function destroyPoppedCells(cellsPopped)
+    if type(cellsPopped) ~= "table" then return 0 end
+    local destroyed = 0
+    for _, entry in ipairs(cellsPopped) do
+        if type(entry) == "table" then
+            local r = entry.row or entry[1]
+            local c = entry.col or entry[2]
+            if type(r) == "number" and type(c) == "number" then
+                local key = posKey(r, c)
+                local existingLocked = lockedPearls[key]
+                if existingLocked and existingLocked.pearl then existingLocked.pearl:Destroy() end
+                if lockedPearls[key] ~= nil then
+                    destroyed += 1
+                    lockedPearls[key] = nil
+                end
+            end
+        end
+    end
+    return destroyed
 end
 
 -- Partner-offset mirrors GameState.partnerOffset so the client can paint both
@@ -401,6 +433,21 @@ if chainCompletedRemote then
             fmtVal(event and event.totalPopped)
         ))
         if not isLocal then return end
+        -- Destroy popped cells explicitly first, using per-step coordinates,
+        -- so we don't repaint pearls that should have just popped. Then layer
+        -- on the additive snapshot to catch any gravity-settled positions the
+        -- server moved into previously empty cells.
+        local totalDestroyed = 0
+        local stepCount = 0
+        if type(event.steps) == "table" then
+            for _, step in ipairs(event.steps) do
+                if type(step) == "table" then
+                    stepCount += 1
+                    totalDestroyed += destroyPoppedCells(step.cellsPopped)
+                end
+            end
+        end
+        print(("[BoardRenderer] ChainCompleted destroyed %d popped cells across %d steps"):format(totalDestroyed, stepCount))
         if event.cells then
             paintFromSnapshot(event.cells)
         end
