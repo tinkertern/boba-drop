@@ -151,6 +151,7 @@ function GameState:applyOutgoingChain(senderPlayerId, outgoingCubes)
             playerId = senderPlayerId,
             cubes = 0,
             canceledByCounter = canceled,
+            cellsDropped = {},
         })
     end
     if outgoingCubes > 0 then
@@ -435,6 +436,7 @@ function GameState:_dropGarbage(playerId)
     local extra = cubes % board.width
 
     local placed = 0
+    local cellsDropped = {}
     for col = 1, board.width do
         local target = perCol + (col <= extra and 1 or 0)
         for _ = 1, target do
@@ -445,6 +447,7 @@ function GameState:_dropGarbage(playerId)
             end
             if r <= board.height then
                 board:placeAt(r, col, "Garbage")
+                table.insert(cellsDropped, { row = r, col = col })
                 placed += 1
             end
         end
@@ -456,6 +459,7 @@ function GameState:_dropGarbage(playerId)
         playerId = playerId,
         cubes = placed,
         canceledByCounter = 0,
+        cellsDropped = cellsDropped,
     })
 end
 

@@ -18,7 +18,7 @@ Events.Names = {
     ChainCompleted = "ChainCompleted", -- payload: { playerId, chainLength, totalPopped, scoreAdded, garbageOut, isLocal, cells = post-chain snapshot, steps = [{ popped, colors, cellsPopped = [{row, col, color}, ...] }, ...] }
     RoundStartCountdown = "RoundStartCountdown", -- payload: { startsAt = workspace:GetServerTimeNow() + ROUND_START_COUNTDOWN } — clients sync the 3-2-1-GO overlay to this end timestamp
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
-    GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number }
+    GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number, cellsDropped = [{ row, col }, ...] }
     RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }
     MatchEnd = "MatchEnd",         -- payload: { winner, finalScores = { [pid] = number }, bestChain = { [pid] = number } }
 }

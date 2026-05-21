@@ -154,13 +154,9 @@ function RoomManager:onMatchEnd(room)
     for _, p in room.players do
         if p and p.Parent then p:SetAttribute("GameState", "match_end") end
     end
-    -- 15s rematch window started by client; server cleans up after timeout
-    task.delay(Constants.REMATCH_WINDOW, function()
-        if room.phase == "postMatch" then
-            print("[RoomManager] rematch window expired — closing room")
-            self:_closeRoom(room)
-        end
-    end)
+    -- Match-end panel stays open indefinitely; room closes only on deliberate
+    -- Leave / Rematch click or on player disconnect (handled by DisconnectHandler).
+    -- (Previous behaviour auto-closed after REMATCH_WINDOW seconds.)
 end
 
 return RoomManager
