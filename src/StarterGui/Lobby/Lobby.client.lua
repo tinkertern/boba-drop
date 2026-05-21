@@ -174,8 +174,12 @@ end)
 -- queuePillVisible = true while the pill is on-screen at all; the tutorial
 -- card hides for the whole window the pill is up, not just while searching.
 local queueStarted = tick()
-local queueActive = true
-local queuePillVisible = true
+-- queueActive and queuePillVisible both start false: the lobby no longer
+-- auto-queues on join. The player taps PLAY to start matchmaking. This lets
+-- the lobby actually function as a menu (Themes / Settings / tutorial card)
+-- before the queue takes over.
+local queueActive = false
+local queuePillVisible = false
 
 -- Debug override: when true, force the card visible regardless of the
 -- DataStore-persisted dismiss attribute. Toggled by the corner "?" button
@@ -237,6 +241,7 @@ queuePanel.AnchorPoint = Vector2.new(0.5, 1)
 queuePanel.BackgroundColor3 = UIConstants.Colors.Cream
 queuePanel.BackgroundTransparency = 0
 queuePanel.BorderSizePixel = 0
+queuePanel.Visible = false
 queuePanel.Parent = screenGui
 
 local queueCorner = Instance.new("UICorner")
@@ -396,8 +401,55 @@ local function startQueue()
     end)
 end
 
-slideIn()
-startQueue()
+-- PLAY button: hero CTA that starts matchmaking. Lobby no longer auto-queues
+-- on join, so the player has a real menu moment to browse Themes, open
+-- Settings, or read the tutorial card before they commit to a match. Hides
+-- itself once tapped; from there the queue pill is the canonical control.
+local playBtn = Instance.new("TextButton")
+playBtn.Name = "PlayBtn"
+playBtn.Size = UDim2.fromOffset(260, 88)
+playBtn.Position = UDim2.fromScale(0.5, 0.6)
+playBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+playBtn.AutoButtonColor = false
+playBtn.BorderSizePixel = 0
+playBtn.BackgroundColor3 = UIConstants.Colors.Mint
+playBtn.TextColor3 = UIConstants.Colors.TextDark
+playBtn.FontFace = UIConstants.Fonts.Display
+playBtn.TextSize = 40
+playBtn.Text = "PLAY"
+playBtn.Parent = screenGui
+
+local playCorner = Instance.new("UICorner")
+playCorner.CornerRadius = UIConstants.Corners.Button
+playCorner.Parent = playBtn
+
+local playStroke = Instance.new("UIStroke")
+playStroke.Color = UIConstants.Colors.StrokeWarm
+playStroke.Thickness = 2
+playStroke.Transparency = 0.35
+playStroke.Parent = playBtn
+
+local playScale = Instance.new("UIScale")
+playScale.Scale = 1
+playScale.Parent = playBtn
+
+playBtn.MouseButton1Click:Connect(function()
+    squish(playScale)
+    playBtn.Visible = false
+    slideIn()
+    startQueue()
+end)
+
+-- When the player returns to the lobby (e.g. after a match end transitions
+-- GameState back to lobby), re-show the PLAY button so they have a clean
+-- re-entry. The queue pill resets via its own Search-again flow, but a
+-- fresh PLAY feels more like "back to the menu" than a stale pill state.
+player:GetAttributeChangedSignal("GameState"):Connect(function()
+    local state = player:GetAttribute("GameState")
+    if state == "lobby" and not queueActive then
+        playBtn.Visible = true
+    end
+end)
 
 cancelBtn.MouseButton1Click:Connect(function()
     squish(cancelScale)
