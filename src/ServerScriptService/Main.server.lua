@@ -34,6 +34,7 @@ if Remotes then
     local rematchRemote = Remotes:WaitForChild("RematchRequest", 30)
     local leaveRemote = Remotes:WaitForChild("LeaveMatch", 30)
     local enterQueueRemote = Remotes:WaitForChild("EnterQueue", 30)
+    local leaveQueueRemote = Remotes:WaitForChild("LeaveQueue", 30)
 
     if moveRemote then
         moveRemote.OnServerEvent:Connect(function(player, payload)
@@ -74,6 +75,11 @@ if Remotes then
         enterQueueRemote.OnServerEvent:Connect(function(player)
             if roomManager:roomOf(player) then return end
             roomManager:enqueuePlayer(player)
+        end)
+    end
+    if leaveQueueRemote then
+        leaveQueueRemote.OnServerEvent:Connect(function(player)
+            roomManager:leaveQueue(player)
         end)
     end
 else

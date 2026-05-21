@@ -31,10 +31,30 @@ function RoomManager:_fireRoomReady(room)
 end
 
 function RoomManager:enqueuePlayer(player)
+    -- Idempotent: a double-fired EnterQueue (rapid PLAY taps, cancel→play
+    -- without a server-side LeaveQueue, etc.) must not insert the same player
+    -- twice — otherwise _tryMatchmake will pair the player against themself
+    -- and produce a ghost-opponent room.
+    for _, queued in self._queue do
+        if queued == player then return end
+    end
     table.insert(self._queue, player)
     player:SetAttribute("GameState", "matching")
     print("[RoomManager] enqueued " .. player.Name .. " (queue size " .. #self._queue .. ")")
     self:_tryMatchmake()
+end
+
+function RoomManager:leaveQueue(player)
+    for i, queued in self._queue do
+        if queued == player then
+            table.remove(self._queue, i)
+            print("[RoomManager] " .. player.Name .. " left queue (size " .. #self._queue .. ")")
+            break
+        end
+    end
+    if player.Parent then
+        player:SetAttribute("GameState", "main_menu")
+    end
 end
 
 function RoomManager:_tryMatchmake()
