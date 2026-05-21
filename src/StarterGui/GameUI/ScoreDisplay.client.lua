@@ -5,6 +5,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
@@ -66,16 +67,65 @@ local valueScale = Instance.new("UIScale")
 valueScale.Scale = 1
 valueScale.Parent = labelValue
 
-local score = 0
-local function render()
-    labelValue.Text = tostring(score)
-    -- Tiny bounce on each update.
+local COUNT_UP_DURATION = 0.6 -- seconds, Quad/Out easing applied via RenderStepped
+
+local score = 0 -- authoritative target score
+local displayedScore = 0 -- currently rendered number
+local tweenStartScore = 0
+local tweenStartTime = 0
+local tweenActive = false
+local tweenConn = nil
+
+local function setText(n)
+    labelValue.Text = tostring(n)
+end
+
+local function bounce()
     valueScale.Scale = 1.15
     TweenService:Create(
         valueScale,
         UIConstants.tween(UIConstants.Durations.BounceIn, "UI"),
         { Scale = 1 }
     ):Play()
+end
+
+local function stopTween()
+    if tweenConn then
+        tweenConn:Disconnect()
+        tweenConn = nil
+    end
+    tweenActive = false
+end
+
+local function startCountUp()
+    stopTween()
+    tweenStartScore = displayedScore
+    tweenStartTime = os.clock()
+    tweenActive = true
+    tweenConn = RunService.RenderStepped:Connect(function()
+        local t = (os.clock() - tweenStartTime) / COUNT_UP_DURATION
+        if t >= 1 then
+            displayedScore = score
+            setText(displayedScore)
+            stopTween()
+            return
+        end
+        -- Quad/Out: 1 - (1 - t)^2
+        local eased = 1 - (1 - t) * (1 - t)
+        displayedScore = math.floor(tweenStartScore + (score - tweenStartScore) * eased + 0.5)
+        setText(displayedScore)
+    end)
+end
+
+local function render(snap)
+    if snap then
+        stopTween()
+        displayedScore = score
+        setText(displayedScore)
+        return
+    end
+    bounce()
+    startCountUp()
 end
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
@@ -96,5 +146,5 @@ end)
 
 roundEndRemote.OnClientEvent:Connect(function()
     score = 0
-    render()
+    render(true) -- snap on reset; no tween from N back to 0
 end)
