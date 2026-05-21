@@ -1,4 +1,6 @@
--- NextPiecePreview: top-right HUD showing the next 2 upcoming pieces.
+-- NextPiecePreview: top-left HUD showing the next 2 upcoming pieces, sitting
+-- under the score pill. Was previously top-right but it overlapped the LEAVE
+-- pill in that corner, per Sarah's note 2026-05-20.
 -- Subscribes to NextPieceQueueUpdate (server fires on every _spawnPiece).
 -- queue[1] = next piece, queue[2] = the one after. Currently-active piece
 -- is NOT in the queue.
@@ -31,9 +33,12 @@ end
 -- ScreenGui scaffolding
 --------------------------------------------------------------------------------
 
-local CONTAINER_SIZE = UDim2.fromOffset(72, 168)
-local ONSCREEN_POS = UDim2.new(1, -16, 0, 16)
-local OFFSCREEN_POS = UDim2.new(1, 16, 0, 16)
+-- Layout sits flush below the score pill: score is at (20, 20) size (176, 64),
+-- so NEXT lives at (20, 92) with width matching the score (176) and height
+-- big enough for a header + two side-by-side mini cards. Mounts off-screen-left.
+local CONTAINER_SIZE = UDim2.fromOffset(176, 96)
+local ONSCREEN_POS = UDim2.new(0, 20, 0, 92)
+local OFFSCREEN_POS = UDim2.new(0, -200, 0, 92)
 local SLOT_SIZE = UDim2.fromOffset(56, 68)
 local PEARL_SIZE = UDim2.fromOffset(24, 24)
 
@@ -47,7 +52,7 @@ screenGui.Parent = playerGui
 
 local container = Instance.new("Frame")
 container.Name = "Container"
-container.AnchorPoint = Vector2.new(1, 0)
+container.AnchorPoint = Vector2.new(0, 0)
 container.Position = OFFSCREEN_POS
 container.Size = CONTAINER_SIZE
 container.BackgroundColor3 = UIConstants.Colors.Cream
@@ -73,6 +78,7 @@ containerPadding.PaddingLeft = UDim.new(0, 6)
 containerPadding.PaddingRight = UDim.new(0, 6)
 containerPadding.Parent = container
 
+-- Container layout: header on top, then a horizontal row of slot cards below.
 local listLayout = Instance.new("UIListLayout")
 listLayout.FillDirection = Enum.FillDirection.Vertical
 listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -94,6 +100,22 @@ header.TextXAlignment = Enum.TextXAlignment.Center
 header.TextYAlignment = Enum.TextYAlignment.Center
 header.Parent = container
 
+-- Slot row: holds slot1 + slot2 side by side beneath the header.
+local slotRow = Instance.new("Frame")
+slotRow.Name = "SlotRow"
+slotRow.LayoutOrder = 2
+slotRow.Size = UDim2.new(1, 0, 0, SLOT_SIZE.Y.Offset)
+slotRow.BackgroundTransparency = 1
+slotRow.Parent = container
+
+local slotRowLayout = Instance.new("UIListLayout")
+slotRowLayout.FillDirection = Enum.FillDirection.Horizontal
+slotRowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+slotRowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+slotRowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+slotRowLayout.Padding = UDim.new(0, 8)
+slotRowLayout.Parent = slotRow
+
 --------------------------------------------------------------------------------
 -- Slot builders
 --------------------------------------------------------------------------------
@@ -101,13 +123,13 @@ header.Parent = container
 local function makeSlot(layoutOrder)
     local slot = Instance.new("Frame")
     slot.Name = "Slot" .. layoutOrder
-    slot.LayoutOrder = layoutOrder + 1 -- header is 1
+    slot.LayoutOrder = layoutOrder
     slot.Size = SLOT_SIZE
     slot.BackgroundColor3 = UIConstants.Colors.Cream
     slot.BackgroundTransparency = 0.35
     slot.BorderSizePixel = 0
     slot.Visible = false
-    slot.Parent = container
+    slot.Parent = slotRow
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UIConstants.Corners.Card

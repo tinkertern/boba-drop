@@ -404,16 +404,20 @@ local function animatePopThenDestroy(row, col, stepIndex)
     end)
     sound:Play()
 
-    local punchInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    -- Slowed 2.5x from original (0.08 punch, 0.14 shrink, 0.18 stagger) so the
+    -- pop reads clearly at a low frame-rate screen recording. Total per-pearl
+    -- animation is now 0.20 + 0.35 = 0.55s; per-step stagger lives in the
+    -- ChainCompleted handler.
+    local punchInfo = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     local punch = TweenService:Create(pearl, punchInfo, {
         Size = UDim2.fromScale(0.82 * 1.4, 0.82 * 1.4),
         BackgroundColor3 = UIConstants.Colors.PearlHighlight,
     })
     punch:Play()
 
-    task.delay(0.08, function()
+    task.delay(0.20, function()
         if not pearl or not pearl.Parent then return end
-        local shrinkInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local shrinkInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         local shrink = TweenService:Create(pearl, shrinkInfo, {
             Size = UDim2.fromScale(0, 0),
             BackgroundTransparency = 1,
@@ -434,22 +438,24 @@ local function animateLockSquish(row, col)
     local entry = lockedPearls[key]
     if not entry or not entry.pearl then return end
     local pearl = entry.pearl
+    -- Slowed 2.5x from original 0.06 each to 0.15 each so the squish reads at
+    -- low-fps screen recordings. Total bounce is now 0.45s (was 0.18s).
     local base = 0.82
-    local stretchInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local squashInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    local settleInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local stretchInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local squashInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local settleInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
     local stretch = TweenService:Create(pearl, stretchInfo, {
         Size = UDim2.fromScale(base * 0.92, base * 1.15),
     })
     stretch:Play()
-    task.delay(0.06, function()
+    task.delay(0.15, function()
         if not pearl or not pearl.Parent then return end
         local squash = TweenService:Create(pearl, squashInfo, {
             Size = UDim2.fromScale(base * 1.05, base * 0.95),
         })
         squash:Play()
-        task.delay(0.06, function()
+        task.delay(0.15, function()
             if not pearl or not pearl.Parent then return end
             local settle = TweenService:Create(pearl, settleInfo, {
                 Size = UDim2.fromScale(base, base),
@@ -578,7 +584,10 @@ if chainCompletedRemote then
         -- underway so the player sees pops before gravity settles.
         local totalDestroyed = 0
         local stepCount = 0
-        local stepStagger = 0.18
+        -- Slowed 2.5x from original 0.18s so multi-step chains read clearly at
+        -- low-fps captures. Per-step gap is now 0.45s; a 3-chain takes about 1.35s
+        -- of stagger plus 0.55s pop tail.
+        local stepStagger = 0.45
         if type(event.steps) == "table" then
             for i, step in ipairs(event.steps) do
                 if type(step) == "table" then
@@ -619,7 +628,8 @@ if chainCompletedRemote then
         -- gravity + repainting. Worst case: (stepCount * 180) + 220ms (the
         -- 220 covers the 80ms punch + 140ms shrink of the last step).
         task.spawn(function()
-            local waitSeconds = (math.max(stepCount, 1) - 1) * stepStagger + 0.22
+            -- 0.55s tail = punch 0.20s + shrink 0.35s of the final step.
+            local waitSeconds = (math.max(stepCount, 1) - 1) * stepStagger + 0.55
             task.wait(waitSeconds)
             local settledRemoved = 0
             if event.cells then
