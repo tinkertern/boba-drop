@@ -17,8 +17,7 @@ local stateSync = StateSync.new(roomManager)
 local gamePasses = GamePasses.new()
 
 Players.PlayerAdded:Connect(function(player)
-    player:SetAttribute("GameState", "lobby")
-    roomManager:enqueuePlayer(player)
+    player:SetAttribute("GameState", "main_menu")
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -34,6 +33,7 @@ if Remotes then
     local hardDropRemote = Remotes:WaitForChild("InputHardDrop", 30)
     local rematchRemote = Remotes:WaitForChild("RematchRequest", 30)
     local leaveRemote = Remotes:WaitForChild("LeaveMatch", 30)
+    local enterQueueRemote = Remotes:WaitForChild("EnterQueue", 30)
 
     if moveRemote then
         moveRemote.OnServerEvent:Connect(function(player, payload)
@@ -68,6 +68,12 @@ if Remotes then
     if leaveRemote then
         leaveRemote.OnServerEvent:Connect(function(player, payload)
             roomManager:registerRematchVote(player, false)
+        end)
+    end
+    if enterQueueRemote then
+        enterQueueRemote.OnServerEvent:Connect(function(player)
+            if roomManager:roomOf(player) then return end
+            roomManager:enqueuePlayer(player)
         end)
     end
 else

@@ -132,20 +132,17 @@ function RoomManager:_closeRoom(room)
     for _, p in room.players do
         self._playerRoom[p.UserId] = nil
         if p.Parent then
-            -- Surface "lobby" first so Producer's UIStateController can show the
-            -- lobby panel; the immediate re-queue below transitions us to
-            -- "matching" on the next tick.
-            p:SetAttribute("GameState", "lobby")
-            table.insert(self._queue, p)
-            p:SetAttribute("GameState", "matching")
+            -- Match end / Leave returns the player to the main menu. No auto
+            -- re-enqueue — re-entering the queue requires a fresh PLAY click
+            -- (server-side: EnterQueue RemoteEvent).
+            p:SetAttribute("GameState", "main_menu")
         end
     end
     self._rematchVotes[room] = nil
     for i, r in self._rooms do
         if r == room then table.remove(self._rooms, i); break end
     end
-    print("[RoomManager] room closed, players re-queued where possible")
-    self:_tryMatchmake()
+    print("[RoomManager] room closed, players returned to main menu")
 end
 
 function RoomManager:onMatchEnd(room)
