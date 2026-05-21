@@ -45,28 +45,16 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Disable the default Roblox PlayerControls while in_match so WASD only routes
--- to the falling-block game (and doesn't walk the avatar in the background or
--- play footstep sounds). Re-enable on lobby/match_end so the player can move
--- around between matches if they want.
+-- Disable Roblox's default PlayerControls permanently. Boba Drop is a 2D UI
+-- experience; the avatar exists in Workspace but is never visible or relevant.
+-- Disabling controls prevents WASD from walking the avatar in the background
+-- and silences the footstep audio. Wrapped in a pcall in case PlayerModule
+-- isn't available in some run configurations.
 local player = Players.LocalPlayer
-local controlsAvailable, Controls = pcall(function()
+pcall(function()
     local PlayerScripts = player:WaitForChild("PlayerScripts", 10)
     local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule", 10))
-    return PlayerModule:GetControls()
+    PlayerModule:GetControls():Disable()
 end)
-
-local function syncControlsForState()
-    if not controlsAvailable or not Controls then return end
-    local state = player:GetAttribute("GameState")
-    if state == "in_match" then
-        Controls:Disable()
-    else
-        Controls:Enable()
-    end
-end
-
-player:GetAttributeChangedSignal("GameState"):Connect(syncControlsForState)
-syncControlsForState()
 
 print("InputHandler (keyboard) ready")
