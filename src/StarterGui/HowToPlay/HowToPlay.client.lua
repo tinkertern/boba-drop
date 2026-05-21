@@ -566,12 +566,23 @@ xCloseBtn.MouseButton1Click:Connect(function()
     closeModal()
 end)
 
--- Scrim-click closes the modal too. scrim.Active=true above lets InputBegan
--- fire on a Frame; the panel sits on top with its own Active=true so a click
--- on the cream is absorbed before reaching here.
+-- Scrim-click closes the modal, but only when the click lands OUTSIDE the
+-- panel rect. panel.Active=true alone doesn't stop scrim.InputBegan from
+-- firing for panel-internal clicks (Roblox bubbles input through the
+-- hierarchy), so we have to bounds-check here.
 scrim.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    local pos = input.Position
+    local rectPos = panel.AbsolutePosition
+    local rectSize = panel.AbsoluteSize
+    local insidePanel = pos.X >= rectPos.X
+        and pos.X <= rectPos.X + rectSize.X
+        and pos.Y >= rectPos.Y
+        and pos.Y <= rectPos.Y + rectSize.Y
+    if not insidePanel then
         closeModal()
     end
 end)

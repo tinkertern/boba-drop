@@ -495,9 +495,22 @@ closeBtn.MouseButton1Click:Connect(function()
     setOpen(false)
 end)
 
+-- Close on scrim click only when the click landed OUTSIDE the modal rect.
+-- modal.Active=true alone doesn't stop scrim.InputBegan from firing for
+-- modal-internal clicks (Roblox bubbles input through the hierarchy).
 scrim.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    local pos = input.Position
+    local rectPos = modal.AbsolutePosition
+    local rectSize = modal.AbsoluteSize
+    local insideModal = pos.X >= rectPos.X
+        and pos.X <= rectPos.X + rectSize.X
+        and pos.Y >= rectPos.Y
+        and pos.Y <= rectPos.Y + rectSize.Y
+    if not insideModal then
         setOpen(false)
     end
 end)
