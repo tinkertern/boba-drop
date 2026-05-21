@@ -1015,6 +1015,87 @@ if chainCompletedRemote then
     end)
 end
 
+-- Garbage fall animation. Each entry in cellsDropped is a final {row, col}
+-- where the server placed a "Garbage" cell. We spawn a transient screen-level
+-- ice pearl at the top of the column, tween its Position down to the target
+-- cell's center, then on completion swap to a real cell-parented locked pearl
+-- via paintPearl. Parented to a dedicated overlay ScreenGui so the transient
+-- floats freely above the cup container (avoids the UIPadding-on-container
+-- gotcha that broke the earlier smooth-fall attempt).
+local garbageOverlay = Instance.new("ScreenGui")
+garbageOverlay.Name = "BoardGarbageOverlay"
+garbageOverlay.ResetOnSpawn = false
+garbageOverlay.IgnoreGuiInset = true
+garbageOverlay.DisplayOrder = UIConstants.ZOrder.Board + 1
+garbageOverlay.Parent = playerGui
+
+local function animateGarbageFall(cellsDropped)
+    if type(cellsDropped) ~= "table" then return end
+    for _, entry in ipairs(cellsDropped) do
+        if type(entry) == "table" then
+            local targetRow = entry.row or entry[1]
+            local targetCol = entry.col or entry[2]
+            if type(targetRow) == "number" and type(targetCol) == "number" then
+                local topCell = cellsByPos[posKey(BOARD_TOTAL_HEIGHT, targetCol)]
+                local targetCell = cellsByPos[posKey(targetRow, targetCol)]
+                if topCell and targetCell then
+                    local topCellPos = topCell.AbsolutePosition
+                    local topCellSize = topCell.AbsoluteSize
+                    local targetCellPos = targetCell.AbsolutePosition
+                    local startX = topCellPos.X + topCellSize.X * 0.5
+                    local startY = topCellPos.Y + topCellSize.Y * 0.5
+                    local endX = targetCellPos.X + topCellSize.X * 0.5
+                    local endY = targetCellPos.Y + topCellSize.Y * 0.5
+
+                    local fallingPearl = Instance.new("Frame")
+                    fallingPearl.Name = "FallingGarbage"
+                    fallingPearl.AnchorPoint = Vector2.new(0.5, 0.5)
+                    fallingPearl.Position = UDim2.fromOffset(startX, startY)
+                    fallingPearl.Size = UDim2.fromOffset(topCellSize.X * 0.82, topCellSize.Y * 0.82)
+                    fallingPearl.BackgroundColor3 = colorForServerName("Garbage")
+                    fallingPearl.BorderSizePixel = 0
+                    fallingPearl.Parent = garbageOverlay
+
+                    local corner = Instance.new("UICorner")
+                    corner.CornerRadius = UIConstants.Corners.Pearl
+                    corner.Parent = fallingPearl
+
+                    local stroke = Instance.new("UIStroke")
+                    stroke.Color = UIConstants.Colors.StrokeWarm
+                    stroke.Thickness = 1.5
+                    stroke.Transparency = 0.45
+                    stroke.Parent = fallingPearl
+
+                    -- Tween duration scales with distance so all cubes land at
+                    -- roughly the same gravity-like acceleration feel.
+                    local distance = math.max(1, BOARD_TOTAL_HEIGHT - targetRow)
+                    local duration = 0.20 + distance * 0.05
+                    local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+                    local tween = TweenService:Create(fallingPearl, info, {
+                        Position = UDim2.fromOffset(endX, endY),
+                    })
+                    tween:Play()
+                    tween.Completed:Connect(function()
+                        if fallingPearl then fallingPearl:Destroy() end
+                        paintPearl(targetRow, targetCol, "Garbage", "locked")
+                        updateDangerRow()
+                    end)
+                end
+            end
+        end
+    end
+end
+
+local garbageAppliedRemote = Remotes:WaitForChild("GarbageApplied", 10)
+if garbageAppliedRemote then
+    garbageAppliedRemote.OnClientEvent:Connect(function(event)
+        if not event then return end
+        local isLocal = tostring(event.playerId) == localUserId
+        if not isLocal then return end
+        animateGarbageFall(event.cellsDropped)
+    end)
+end
+
 local roundEndRemote = Remotes:WaitForChild("RoundEnd", 10)
 if roundEndRemote then
     roundEndRemote.OnClientEvent:Connect(function(event)
