@@ -183,6 +183,15 @@ local function buildPearl(parent, color, isPivot)
     corner.CornerRadius = UIConstants.Corners.Pearl
     corner.Parent = pearl
 
+    -- Stroke gives mini-pearls definition against the cream slot background,
+    -- specifically so the white pearl reads instead of blending in.
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = UIConstants.Colors.StrokeWarm
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.35
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = pearl
+
     -- Subtle glossy highlight
     local highlight = Instance.new("Frame")
     highlight.Name = "Highlight"

@@ -909,31 +909,17 @@ if activePieceRemote then
         end
         local dr, dc = partnerOffset(orientation)
 
-        -- A4: tween vs rebuild decision. If the colors match the previous tick,
-        -- we treat this as the same piece moving and tween the existing pearls
-        -- between cells. If colors changed, the previous piece locked and a new
-        -- one spawned; rebuild fresh.
-        local sameColors = activePieceState.aPearl ~= nil
-            and activePieceState.bPearl ~= nil
-            and activePieceState.aColor == aColor
-            and activePieceState.bColor == bColor
-        if sameColors then
-            local tweenInfo = classifyActiveTween(
-                activePieceState.pivotRow, activePieceState.pivotCol, activePieceState.orientation,
-                pivotRow, pivotCol, orientation
-            )
-            moveActivePearlToCell(activePieceState.aPearl, pivotRow, pivotCol, tweenInfo)
-            moveActivePearlToCell(activePieceState.bPearl, pivotRow + dr, pivotCol + dc, tweenInfo)
-        else
-            -- New piece or first-ever paint: rebuild fresh in the container.
-            clearActivePearls()
-            if aColor then
-                activePieceState.aPearl = buildActivePearlAtCell(pivotRow, pivotCol, colorForServerName(aColor))
-            end
-            if bColor then
-                activePieceState.bPearl = buildActivePearlAtCell(pivotRow + dr, pivotCol + dc, colorForServerName(bColor))
-            end
-        end
+        -- Revert from A4 smooth-fall (container-parented pixel-offset) back to
+        -- cell-parented active pearls via paintPearl. The reparent approach was
+        -- positioning pearls outside the visible cup on Sarah's playtest, making
+        -- the active piece appear invisible. Cell-parenting is rock-solid and
+        -- handles dpi/aspect ratio changes for free; we lose the smooth fall
+        -- tween but keep the game playable. Smooth fall can be re-attempted in
+        -- v1.1 via a cleaner approach (e.g., transient ghost frame that lerps
+        -- under the active pearl while it teleports on tick).
+        clearActivePearls()
+        if aColor then paintPearl(pivotRow, pivotCol, aColor, "active") end
+        if bColor then paintPearl(pivotRow + dr, pivotCol + dc, bColor, "active") end
         activePieceState.pivotRow = pivotRow
         activePieceState.pivotCol = pivotCol
         activePieceState.orientation = orientation
