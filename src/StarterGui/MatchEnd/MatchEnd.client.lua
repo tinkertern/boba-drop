@@ -282,6 +282,87 @@ local function countUp(label, target, formatter)
 end
 
 --------------------------------------------------------------------------------
+-- Win confetti burst. Fires once on a local-player win, after the slide-in
+-- finishes so it reads as a payoff layer on top of the panel. Pieces are
+-- parented to the ScreenGui (not the panel) so they can fly past the panel
+-- bounds. Each piece is non-interactive so REMATCH / LEAVE buttons stay
+-- clickable through any overlap.
+-- TODO: wire win stinger sound when SFX assets land.
+--------------------------------------------------------------------------------
+
+local CONFETTI_DURATION = 1.5
+local CONFETTI_TWEEN_INFO = TweenInfo.new(
+    CONFETTI_DURATION,
+    Enum.EasingStyle.Quad,
+    Enum.EasingDirection.Out
+)
+
+-- Prefer the sparkles palette if present; otherwise fall back to the pastel
+-- pearl colors + Coral for variety.
+local CONFETTI_COLORS = (UIConstants.Sparkles and UIConstants.Sparkles.Colors) or {
+    UIConstants.Colors.PearlBrown,
+    UIConstants.Colors.PearlPink,
+    UIConstants.Colors.PearlGreen,
+    UIConstants.Colors.PearlWhite,
+    UIConstants.Colors.Coral,
+}
+
+local function spawnConfetti()
+    -- Panel center is (0.5, 0.5). Top edge of the 480x360 panel sits 180px above
+    -- center, so we seed pieces in a horizontal band near that line.
+    local topY = -PANEL_SIZE.Y / 2
+    local halfW = PANEL_SIZE.X / 2
+
+    for _ = 1, math.random(18, 24) do
+        local size = math.random(10, 14)
+        local piece = Instance.new("Frame")
+        piece.Name = "Confetti"
+        piece.AnchorPoint = Vector2.new(0.5, 0.5)
+        piece.Size = UDim2.fromOffset(size, size)
+        piece.BorderSizePixel = 0
+        piece.BackgroundColor3 = CONFETTI_COLORS[math.random(1, #CONFETTI_COLORS)]
+        piece.Rotation = math.random(0, 360)
+        piece.Active = false
+        piece.ZIndex = 50
+
+        -- Start near panel top center with a small horizontal jitter.
+        local startOffsetX = math.random(-40, 40)
+        piece.Position = UDim2.new(0.5, startOffsetX, 0.5, topY)
+        piece.Parent = screen
+
+        -- Spread direction: outward + downward (gravity). X spread is signed so
+        -- pieces fan to both sides; Y always positive so they fall past the
+        -- panel bottom.
+        local spreadX = math.random(-260, 260)
+        if math.abs(spreadX) < 80 then
+            -- Avoid pieces just dribbling straight down the center.
+            spreadX = spreadX + (spreadX >= 0 and 80 or -80)
+        end
+        local fallY = math.random(280, 460)
+        local endX = startOffsetX + spreadX
+        local endY = topY + fallY
+
+        -- Slight horizontal drift past the panel edge if the spread is small.
+        if math.abs(endX) < halfW + 20 then
+            endX = endX + (endX >= 0 and 40 or -40)
+        end
+
+        local endRotation = piece.Rotation + (math.random(0, 1) == 0 and -360 or 360)
+
+        local tween = TweenService:Create(piece, CONFETTI_TWEEN_INFO, {
+            Position = UDim2.new(0.5, endX, 0.5, endY),
+            Rotation = endRotation,
+            BackgroundTransparency = 0.2,
+        })
+
+        tween.Completed:Connect(function()
+            piece:Destroy()
+        end)
+        tween:Play()
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Remote wiring
 --------------------------------------------------------------------------------
 
@@ -463,8 +544,13 @@ matchEndRemote.OnClientEvent:Connect(function(event)
 
     -- Slide the panel in, then count up score, then chain.
     local slideTween = slideIn()
+    local resultForBurst = result
     currentStatsThread = task.spawn(function()
         slideTween.Completed:Wait()
+        -- Win payoff layer: confetti burst from the panel's top edge.
+        if resultForBurst == "win" then
+            spawnConfetti()
+        end
         -- Count score row (track our number + their number together).
         local start = os.clock()
         while true do

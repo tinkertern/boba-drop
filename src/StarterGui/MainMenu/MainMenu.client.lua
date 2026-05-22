@@ -212,6 +212,116 @@ end)
 pulseUp:Play()
 
 --------------------------------------------------------------------------------
+-- Player greeting: small frame top-left with the player's headshot circle
+-- and a "Welcome back," + DisplayName text block. Drifts in from above on
+-- first render so the menu feels like it's assembling itself for this
+-- specific player. Sits above the pearl ambience (ZIndex 5) but below the
+-- title pulse and CTA stack (ZIndex 10).
+--------------------------------------------------------------------------------
+
+local greetingFrame = Instance.new("Frame")
+greetingFrame.Name = "Greeting"
+greetingFrame.AnchorPoint = Vector2.new(0, 0)
+greetingFrame.Position = UDim2.fromOffset(20, -60) -- starts above the screen, tweens down
+greetingFrame.Size = UDim2.fromOffset(200, 56)
+greetingFrame.BackgroundTransparency = 1
+greetingFrame.ZIndex = 5
+greetingFrame.Parent = screenGui
+
+-- Headshot circle on the left. 48x48 with Cream fill as a loading-state
+-- background so a slow thumbnail fetch doesn't render as a blank hole.
+local headshot = Instance.new("ImageLabel")
+headshot.Name = "Headshot"
+headshot.AnchorPoint = Vector2.new(0, 0.5)
+headshot.Position = UDim2.new(0, 0, 0.5, 0)
+headshot.Size = UDim2.fromOffset(48, 48)
+headshot.BackgroundColor3 = UIConstants.Colors.Cream
+headshot.BackgroundTransparency = 0
+headshot.BorderSizePixel = 0
+headshot.ScaleType = Enum.ScaleType.Crop
+headshot.Image = ""
+headshot.ZIndex = 6
+headshot.Parent = greetingFrame
+
+local headshotCorner = Instance.new("UICorner")
+headshotCorner.CornerRadius = UIConstants.Corners.Pearl
+headshotCorner.Parent = headshot
+
+-- Thumbnail fetch can throw if Roblox auth is offline or the avatar isn't
+-- resolvable. Wrap in pcall and fall back to a solid PearlPink fill so the
+-- corner still reads as a player chip and not a broken image.
+local ok, thumbnailUrl = pcall(function()
+    return Players:GetUserThumbnailAsync(
+        player.UserId,
+        Enum.ThumbnailType.HeadShot,
+        Enum.ThumbnailSize.Size48x48
+    )
+end)
+if ok and thumbnailUrl and thumbnailUrl ~= "" then
+    headshot.Image = thumbnailUrl
+else
+    -- Solid pearl fallback. Drop the cream background, swap in PearlPink so
+    -- the chip still feels intentional, and leave Image empty.
+    headshot.BackgroundColor3 = UIConstants.Colors.PearlPink
+end
+
+-- Text block on the right of the headshot. Two stacked lines: a small soft
+-- "Welcome back," and the DisplayName below it. If DisplayName equals Name
+-- we still show just one name line (the spec calls for one name line either
+-- way), so this branch only changes which string we pass to the label.
+local textBlock = Instance.new("Frame")
+textBlock.Name = "TextBlock"
+textBlock.AnchorPoint = Vector2.new(0, 0.5)
+textBlock.Position = UDim2.new(0, 56, 0.5, 0) -- 48px headshot + 8px gap
+textBlock.Size = UDim2.fromOffset(144, 48)
+textBlock.BackgroundTransparency = 1
+textBlock.ZIndex = 6
+textBlock.Parent = greetingFrame
+
+local welcomeLabel = Instance.new("TextLabel")
+welcomeLabel.Name = "Welcome"
+welcomeLabel.AnchorPoint = Vector2.new(0, 0)
+welcomeLabel.Position = UDim2.fromOffset(0, 2)
+welcomeLabel.Size = UDim2.new(1, 0, 0, 18)
+welcomeLabel.BackgroundTransparency = 1
+welcomeLabel.Text = "Welcome back,"
+welcomeLabel.FontFace = UIConstants.Fonts.Tutorial
+welcomeLabel.TextSize = 14
+welcomeLabel.TextColor3 = UIConstants.Colors.TextSoft
+welcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+welcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
+welcomeLabel.ZIndex = 6
+welcomeLabel.Parent = textBlock
+
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Name = "DisplayName"
+nameLabel.AnchorPoint = Vector2.new(0, 0)
+nameLabel.Position = UDim2.fromOffset(0, 22)
+nameLabel.Size = UDim2.new(1, 0, 0, 22)
+nameLabel.BackgroundTransparency = 1
+-- DisplayName preferred. When it happens to equal Name, we still render it
+-- once (the spec is explicit: one name line either way).
+nameLabel.Text = player.DisplayName
+nameLabel.FontFace = UIConstants.Fonts.Display
+nameLabel.TextSize = 18
+nameLabel.TextColor3 = UIConstants.Colors.TextDark
+nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+nameLabel.ZIndex = 6
+nameLabel.Parent = textBlock
+
+-- Drift in from above. Matches the menu's Back/Out motion grammar (the
+-- title pulse and pill buttons use the same easing family via
+-- UIConstants.Easing.UI).
+local greetingDriftIn = TweenService:Create(
+    greetingFrame,
+    UIConstants.tween(0.5, "UI"),
+    { Position = UDim2.fromOffset(20, 20) }
+)
+greetingDriftIn:Play()
+
+--------------------------------------------------------------------------------
 -- PLAY button: hero CTA. Mint background, warm stroke, big display text.
 -- Press feedback: UIScale squish, then immediately disable so a fast tapper
 -- can't double-fire EnterQueue. UIStateController will hide the whole

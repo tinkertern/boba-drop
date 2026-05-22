@@ -184,6 +184,20 @@ end
 local PILL_BOTTOM_OFFSET = 24
 local PILL_HEIGHT = 92
 
+-- Cozy queue tips: rotated every 3 seconds while the player is matching so
+-- the subtitle reads less like a dry stopwatch and more like a small coach
+-- whispering mechanics. Elapsed seconds get appended after a middle-dot so
+-- the wait progress is still visible at a glance.
+local TIP_ROTATION = {
+    "hold S or Down to soft drop",
+    "chain colors for combo damage",
+    "watch your danger row pulse",
+    "warm-tan cancels, mint goes",
+    "the cup that overflows first loses",
+    "popping 4+ same color triggers a chain",
+}
+local TIP_INTERVAL_SECONDS = 3
+
 local queuePanel = Instance.new("Frame")
 queuePanel.Name = "Queue"
 queuePanel.Size = UDim2.fromOffset(480, PILL_HEIGHT)
@@ -293,11 +307,12 @@ local PILL_RESTING_POSITION = UDim2.new(0.5, 0, 1, -PILL_BOTTOM_OFFSET)
 local PILL_HIDDEN_POSITION = UDim2.new(0.5, 0, 1, 200)
 
 -- Queue state (declared before the lifecycle helpers reference them). All
--- three reset on each "matching" entry so re-queueing after a match is a
--- clean slate.
+-- reset on each "matching" entry so re-queueing after a match is a clean
+-- slate. `tipIndex` walks TIP_ROTATION while queueActive.
 local queueStarted = 0
 local queueActive = false
 local queuePillVisible = false
+local tipIndex = 1
 
 local function setSearchAgainMode(subtitle)
     queueActive = false
@@ -308,18 +323,38 @@ local function setSearchAgainMode(subtitle)
     cancelBtn.TextColor3 = UIConstants.Colors.TextDark
 end
 
+local function currentTip()
+    if #TIP_ROTATION == 0 then return nil end
+    return TIP_ROTATION[((tipIndex - 1) % #TIP_ROTATION) + 1]
+end
+
+local function formatSubtitle(elapsed)
+    local tip = currentTip()
+    if tip then
+        return ("%s · %ds"):format(tip, elapsed)
+    end
+    return ("%ds"):format(elapsed)
+end
+
 local function startQueue()
     queueStarted = tick()
     queueActive = true
+    tipIndex = 1
     queueLabel.Text = "Searching for opponent..."
-    subtitleLabel.Text = "0s"
+    subtitleLabel.Text = formatSubtitle(0)
     cancelBtn.Text = "Cancel"
     cancelBtn.BackgroundColor3 = UIConstants.Colors.WarmCancel
     cancelBtn.TextColor3 = UIConstants.Colors.TextOnWarm
     task.spawn(function()
         while queueActive and queuePanel.Parent do
             local elapsed = math.floor(tick() - queueStarted)
-            subtitleLabel.Text = ("%ds"):format(elapsed)
+            -- Advance the tip every TIP_INTERVAL_SECONDS ticks. elapsed == 0
+            -- on the first pass keeps tipIndex at 1 so the player sees the
+            -- opening tip for a full interval before rotation kicks in.
+            if elapsed > 0 and elapsed % TIP_INTERVAL_SECONDS == 0 then
+                tipIndex = tipIndex + 1
+            end
+            subtitleLabel.Text = formatSubtitle(elapsed)
             if elapsed >= Constants.QUEUE_TIMEOUT then
                 setSearchAgainMode("No opponent yet. Try again or invite a friend.")
                 break
