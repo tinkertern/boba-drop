@@ -71,10 +71,27 @@ function RoomManager:leaveQueue(player)
 end
 
 function RoomManager:_tryMatchmake()
-    if #self._queue >= 2 then
+    -- Loop so that re-queuing a survivor after a partner-disconnect doesn't
+    -- block a fresh pairing if there are 2+ still waiting.
+    while #self._queue >= 2 do
         local p1 = table.remove(self._queue, 1)
         local p2 = table.remove(self._queue, 1)
-        self:_startRoom(p1, p2)
+        -- Race window: between enqueuePlayer and this firing, either player
+        -- may have left the server. PlayerRemoving doesn't currently scrub
+        -- the queue, so we get a Player Instance with no Parent. Skip pairing;
+        -- re-queue the survivor at the front so they don't lose their slot.
+        local p1Alive = p1.Parent ~= nil
+        local p2Alive = p2.Parent ~= nil
+        if p1Alive and p2Alive then
+            self:_startRoom(p1, p2)
+        elseif p1Alive then
+            table.insert(self._queue, 1, p1)
+            return
+        elseif p2Alive then
+            table.insert(self._queue, 1, p2)
+            return
+        end
+        -- both gone → drop both, continue trying with the rest
     end
 end
 
