@@ -5,17 +5,19 @@
 --   * CLICKABLE        pointer over a GuiButton (TextButton or ImageButton)
 --   * CLICKABLE_DOWN   clickable + mouse button held
 --
--- Roblox's native Mouse.Icon renders the asset at its uploaded resolution,
--- which blew the cursor up to ~300px when Sarah's uploads were high-res.
--- We hide the OS cursor and render our own ImageLabel that follows the
--- mouse at a fixed size. One frame of lag, but pixel-perfect sizing and
--- no need to re-upload the assets at thumbnail resolution.
+-- Renders as a custom ImageLabel that follows the system mouse so the
+-- pixel size is independent of the asset's upload resolution. Hover is
+-- detected by querying PlayerGui:GetGuiObjectsAtPosition on each frame
+-- because parenting our own ImageLabel on top of every other ScreenGui
+-- makes MouseEnter on buttons unreliable (the cursor ImageLabel sits in
+-- front of them at the cursor point and breaks per-object hover events
+-- even with Active = false).
 
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local CURSOR_SIZE = 32
+local CURSOR_SIZE = 64
 local CURSORS = {
     DEFAULT = "rbxassetid://105870042566386",
     DEFAULT_DOWN = "rbxassetid://115400978648073",
@@ -33,7 +35,8 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "CustomCursor"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.DisplayOrder = 2147483647
+gui.DisplayOrder = 1000
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
 local img = Instance.new("ImageLabel")
@@ -46,28 +49,11 @@ img.Active = false
 img.Parent = gui
 
 local isDown = false
-local hoverSet = {}
-
-local function isClickableNow(btn)
-    if not btn or not btn.Parent then return false end
-    if not btn.Active then return false end
-    if not btn.Visible then return false end
-    return true
-end
-
-local function anyHoverClickable()
-    for btn in pairs(hoverSet) do
-        if isClickableNow(btn) then
-            return true
-        end
-    end
-    return false
-end
+local isOverClickable = false
 
 local function refresh()
-    local hovering = anyHoverClickable()
     local key
-    if hovering then
+    if isOverClickable then
         key = isDown and "CLICKABLE_DOWN" or "CLICKABLE"
     else
         key = isDown and "DEFAULT_DOWN" or "DEFAULT"
@@ -75,28 +61,15 @@ local function refresh()
     img.Image = CURSORS[key]
 end
 
-local function bindButton(btn)
-    if not btn:IsA("GuiButton") then return end
-    btn.MouseEnter:Connect(function()
-        hoverSet[btn] = true
-        refresh()
-    end)
-    btn.MouseLeave:Connect(function()
-        hoverSet[btn] = nil
-        refresh()
-    end)
-    btn.AncestryChanged:Connect(function(_, parent)
-        if not parent and hoverSet[btn] then
-            hoverSet[btn] = nil
-            refresh()
+local function hoveringClickable(x, y)
+    local objects = playerGui:GetGuiObjectsAtPosition(x, y)
+    for _, obj in ipairs(objects) do
+        if obj:IsA("GuiButton") and obj.Active and obj.Visible then
+            return true
         end
-    end)
+    end
+    return false
 end
-
-for _, descendant in ipairs(playerGui:GetDescendants()) do
-    bindButton(descendant)
-end
-playerGui.DescendantAdded:Connect(bindButton)
 
 local function isClickInput(input)
     return input.UserInputType == Enum.UserInputType.MouseButton1
@@ -123,7 +96,14 @@ UserInputService.WindowFocusReleased:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-    img.Position = UDim2.fromOffset(mouse.X, mouse.Y)
+    local x, y = mouse.X, mouse.Y
+    img.Position = UDim2.fromOffset(x, y)
+
+    local hovering = hoveringClickable(x, y)
+    if hovering ~= isOverClickable then
+        isOverClickable = hovering
+        refresh()
+    end
 end)
 
 refresh()
