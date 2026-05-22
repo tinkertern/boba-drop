@@ -24,16 +24,13 @@ local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
--- TODO Sarah: paste your uploaded SFX asset ids below. Format:
--- "rbxassetid://<numeric_id>". An empty string disables that sound
--- silently (the wrapper checks before :Play()).
---
--- Where to find ids: Roblox Studio, View tab → Asset Manager → Audio,
--- click the uploaded clip, copy the id from the Properties panel.
-local CLICK_ID   = ""
-local CONFIRM_ID = ""
-local BACK_ID    = ""
-local ERROR_ID   = ""
+-- Sarah's uploaded SFX asset ids. An empty string disables that sound
+-- silently (the wrapper checks before :Play()) so future swap-outs are
+-- safe without removing the wiring.
+local CLICK_ID   = "rbxassetid://130328363670894"
+local CONFIRM_ID = "rbxassetid://122303052947646"
+local BACK_ID    = "rbxassetid://126961855460360"
+local ERROR_ID   = "rbxassetid://134240735414286"
 
 local DEFAULT_SFX_VOLUME = 0.7
 local SFX_VOLUME_ATTRIBUTE = "BobaDropSoundFxVolume"
