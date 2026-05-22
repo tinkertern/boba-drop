@@ -5,14 +5,17 @@
 --   * CLICKABLE        pointer over a GuiButton (TextButton or ImageButton)
 --   * CLICKABLE_DOWN   clickable + mouse button held
 --
--- Lives in StarterPlayerScripts so it survives respawn. Reactive: tracks
--- hover by listening to MouseEnter / MouseLeave on every GuiButton under
--- PlayerGui (current + future), plus a global MouseButton1 / Touch latch
--- for the held state. No polling.
+-- Roblox's native Mouse.Icon renders the asset at its uploaded resolution,
+-- which blew the cursor up to ~300px when Sarah's uploads were high-res.
+-- We hide the OS cursor and render our own ImageLabel that follows the
+-- mouse at a fixed size. One frame of lag, but pixel-perfect sizing and
+-- no need to re-upload the assets at thumbnail resolution.
 
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
+local CURSOR_SIZE = 32
 local CURSORS = {
     DEFAULT = "rbxassetid://105870042566386",
     DEFAULT_DOWN = "rbxassetid://115400978648073",
@@ -23,6 +26,24 @@ local CURSORS = {
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
+
+UserInputService.MouseIconEnabled = false
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "CustomCursor"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 2147483647
+gui.Parent = playerGui
+
+local img = Instance.new("ImageLabel")
+img.Name = "Cursor"
+img.AnchorPoint = Vector2.new(0, 0)
+img.Size = UDim2.fromOffset(CURSOR_SIZE, CURSOR_SIZE)
+img.Image = CURSORS.DEFAULT
+img.BackgroundTransparency = 1
+img.Active = false
+img.Parent = gui
 
 local isDown = false
 local hoverSet = {}
@@ -51,7 +72,7 @@ local function refresh()
     else
         key = isDown and "DEFAULT_DOWN" or "DEFAULT"
     end
-    mouse.Icon = CURSORS[key]
+    img.Image = CURSORS[key]
 end
 
 local function bindButton(btn)
@@ -96,18 +117,13 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Window blur sometimes swallows InputEnded; reset the held latch so the
--- pressed-state cursor doesn't get stuck after alt-tabbing back in.
 UserInputService.WindowFocusReleased:Connect(function()
     isDown = false
     refresh()
 end)
 
-refresh()
-UserInputService.MouseIconEnabled = true
-
-UserInputService:GetPropertyChangedSignal("MouseIconEnabled"):Connect(function()
-    if UserInputService.MouseIconEnabled then
-        refresh()
-    end
+RunService.RenderStepped:Connect(function()
+    img.Position = UDim2.fromOffset(mouse.X, mouse.Y)
 end)
+
+refresh()
