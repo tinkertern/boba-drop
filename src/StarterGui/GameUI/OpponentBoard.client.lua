@@ -82,16 +82,29 @@ screenGui.Enabled = false
 screenGui.Parent = playerGui
 
 -- Small "OPPONENT" label sitting just above the mini cup. Anchored top-center
--- so it stays glued to the cup as the screen scales.
+-- Parented to screenGui (NOT the container) so UIGridLayout inside the
+-- container doesn't treat the label as a 7th grid child. When we
+-- previously re-parented the label INTO the container to anchor it to the
+-- cup edge, the grid laid it out as the bottom-left slot (LayoutOrder 0),
+-- pushing every cell one position forward and creating a staircase across
+-- columns in Sarah's 2026-05-22 playtest.
+--
+-- The aspect lock keeps the container's height at Scale 0.65 of the
+-- viewport, so its TOP edge is always at Scale Y = 0.175 (center 0.5
+-- minus half-height 0.325). Positioning the label at Scale Y = 0.165
+-- with AnchorPoint(0.5, 1) parks its bottom edge 0.01 scale units above
+-- the cup top, a constant 8 to 14 pixel gap across viewport heights.
 local label = Instance.new("TextLabel")
 label.Name = "OpponentLabel"
-label.AnchorPoint = Vector2.new(0.5, 0)
-label.Position = UDim2.fromScale(0.78, 0.1)
+label.AnchorPoint = Vector2.new(0.5, 1)
+label.Position = UDim2.fromScale(0.78, 0.165)
 label.Size = UDim2.fromOffset(120, 18)
 label.BackgroundTransparency = 1
 label.FontFace = UIConstants.Fonts.HUD
 label.TextSize = UIConstants.TextSizes.HUDLabel
-label.TextColor3 = UIConstants.Colors.TextSoft
+-- TextOnWarm reads cleanly against the in-match milk-tea brown backdrop
+-- the label sits on; the previous TextSoft brown blended into the wash.
+label.TextColor3 = UIConstants.Colors.TextOnWarm
 label.TextXAlignment = Enum.TextXAlignment.Center
 label.TextYAlignment = Enum.TextYAlignment.Center
 label.Text = "OPPONENT"
@@ -123,17 +136,10 @@ aspect.AspectRatio = BOARD_WIDTH / BOARD_TOTAL_HEIGHT
 aspect.DominantAxis = Enum.DominantAxis.Height
 aspect.Parent = container
 
--- Re-parent the label to the container with a fixed pixel offset above it.
--- Previously the label sat at Y=0.1 (screen scale) and the container at
--- Y=0.5 with height 0.65 (so container top = 0.175). On wide-short
--- viewports (~910px tall) those scaled positions collide and the label's
--- top edge gets clipped by the container, producing "OPPONENT" -> "ORROMENT"
--- in Sarah's 2026-05-21 screenshot. Glueing the label to the container via
--- AnchorPoint(0.5, 1) + Position(0.5, 0, 0, -8) keeps a constant 8px gap
--- regardless of aspect ratio.
-label.Parent = container
-label.AnchorPoint = Vector2.new(0.5, 1)
-label.Position = UDim2.new(0.5, 0, 0, -8)
+-- (Previous parent-into-container re-anchor reverted: that approach put
+-- the label inside the UIGridLayout, where it became the bottom-left slot
+-- and staircased every grid cell over by one. Label now stays parented to
+-- screenGui above, aspect-stable thanks to the height-locked container.)
 
 local containerCorner = Instance.new("UICorner")
 containerCorner.CornerRadius = UIConstants.Corners.Card
