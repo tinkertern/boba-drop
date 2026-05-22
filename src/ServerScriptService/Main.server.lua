@@ -125,4 +125,41 @@ task.spawn(function()
     end
 end)
 
+-- ----- AFK piece timer -----
+-- Per-piece grief / inattention guard. When a piece spawns for a player, start
+-- an AFK_PIECE_TIMEOUT countdown; clearing on lock. If it fires, forfeit the
+-- round for that player with reason "afk". Without this, a player who walks
+-- away mid-piece stalls the opponent indefinitely (gravity does still tick
+-- their piece in theory, but they can hard-stall by never letting the piece
+-- reach a locked state if no gravity is configured).
+--
+-- Subscribed via onRoomReady so the wiring lands BEFORE the first piece spawn,
+-- same pattern StateSync uses.
+local function findPlayerByUserId(userIdStr)
+    for _, p in Players:GetPlayers() do
+        if tostring(p.UserId) == userIdStr then return p end
+    end
+    return nil
+end
+
+roomManager:onRoomReady(function(room)
+    local gs = room.gameState
+    gs:subscribe("onPieceSpawned", function(event)
+        local player = findPlayerByUserId(event.playerId)
+        if not player then return end
+        disconnectHandler:startAfkTimer(player, function()
+            -- Re-check phase: a piece could have locked / round could have ended
+            -- between the timeout firing and this callback running.
+            if room.gameState ~= gs then return end
+            if gs:phase() ~= "playing" then return end
+            gs:forfeitRound(event.playerId, "afk")
+        end)
+    end)
+    gs:subscribe("onPieceLocked", function(event)
+        local player = findPlayerByUserId(event.playerId)
+        if not player then return end
+        disconnectHandler:clearAfkTimer(player)
+    end)
+end)
+
 print("[Main.server] Boba Drop server ready")
