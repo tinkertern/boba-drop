@@ -19,6 +19,13 @@ local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 -- Attribute names match what AmbientLoop / future SFX listeners read.
 local MUSIC_VOLUME_ATTR = "BobaDropMusicVolume"
 local SFX_VOLUME_ATTR = "BobaDropSoundFxVolume"
@@ -410,6 +417,7 @@ local function makeToggle(parent, opts)
     end
 
     btn.MouseButton1Click:Connect(function()
+        sfx("click")
         local nextValue = not opts.read()
         apply(nextValue, true)
         opts.onChange(nextValue)
@@ -491,6 +499,7 @@ local function setOpen(open)
 end
 
 closeBtn.MouseButton1Click:Connect(function()
+    sfx("back")
     squish(closeScale)
     setOpen(false)
 end)

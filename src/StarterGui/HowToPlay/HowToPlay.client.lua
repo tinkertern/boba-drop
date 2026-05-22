@@ -15,6 +15,13 @@ local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 --------------------------------------------------------------------------------
 -- ScreenGui (always Enabled; visibility gated per element)
 --------------------------------------------------------------------------------
@@ -552,16 +559,19 @@ player:GetAttributeChangedSignal("GameState"):Connect(refreshVisibility)
 --------------------------------------------------------------------------------
 
 questionBtn.MouseButton1Click:Connect(function()
+    sfx("click")
     squish(questionScale)
     openModal()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    sfx("back")
     squish(closeScale)
     closeModal()
 end)
 
 xCloseBtn.MouseButton1Click:Connect(function()
+    sfx("back")
     squish(xCloseScale)
     closeModal()
 end)

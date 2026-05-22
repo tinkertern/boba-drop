@@ -21,6 +21,13 @@ local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 -- Defensive lookup: the remote lives at ReplicatedStorage.Remotes.EnterQueue
 -- (matches the convention used by InputHandler, BoardPlaceholder, etc).
 -- If the engineer's server piece hasn't merged yet, log a warning and let
@@ -389,6 +396,13 @@ local function slideOut()
 end
 
 cancelBtn.MouseButton1Click:Connect(function()
+    -- Two-mode button: while queueActive it's Cancel (back); after a timeout
+    -- it relabels to "Search again" (confirm). Pick the SFX kind to match.
+    if queueActive then
+        sfx("back")
+    else
+        sfx("confirm")
+    end
     squish(cancelScale)
     if queueActive then
         -- Server pops us from the queue and flips GameState back to

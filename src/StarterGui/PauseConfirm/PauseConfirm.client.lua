@@ -15,6 +15,13 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 --------------------------------------------------------------------------------
 -- ScreenGui
 --------------------------------------------------------------------------------
@@ -252,16 +259,19 @@ local leaveRemote = remotes:WaitForChild(leaveName, 30)
 if not leaveRemote then return end
 
 leaveCorner.MouseButton1Click:Connect(function()
+    sfx("click")
     squish(leaveCornerScale)
     openModal()
 end)
 
 stayBtn.MouseButton1Click:Connect(function()
+    sfx("click")
     squish(stayScale)
     closeModal()
 end)
 
 confirmLeaveBtn.MouseButton1Click:Connect(function()
+    sfx("back")
     squish(confirmLeaveScale)
     leaveRemote:FireServer({})
     closeModal()

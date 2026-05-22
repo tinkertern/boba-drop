@@ -20,6 +20,13 @@ local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 local REMATCH_WINDOW = Constants.REMATCH_WINDOW or 15
 local LEAVE_COOLDOWN = Constants.REMATCH_LEAVE_COOLDOWN or 1
 
@@ -586,6 +593,7 @@ rematchBtn.MouseButton1Click:Connect(function()
     if not rematchBtn.Active then return end
     if rematchSent then return end
     rematchSent = true
+    sfx("confirm")
     squish(rematchScale)
     rematchRemote:FireServer({})
     setButtonEnabled(rematchBtn, false)
@@ -593,6 +601,7 @@ end)
 
 leaveBtn.MouseButton1Click:Connect(function()
     if not leaveBtn.Active then return end
+    sfx("back")
     squish(leaveScale)
     leaveRemote:FireServer({})
     setButtonEnabled(leaveBtn, false)

@@ -18,6 +18,13 @@ local PREMIUM_THEMES_ID = 1846258540
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "Shop"
 gui.ResetOnSpawn = false
@@ -288,11 +295,13 @@ local function setOpen(open)
 end
 
 buyBtn.MouseButton1Click:Connect(function()
+    sfx("confirm")
     squish(buyScale)
     MarketplaceService:PromptGamePassPurchase(player, PREMIUM_THEMES_ID)
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    sfx("back")
     squish(closeScale)
     setOpen(false)
 end)

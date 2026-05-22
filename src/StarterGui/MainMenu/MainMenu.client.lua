@@ -24,6 +24,13 @@ local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Defensive UI-SFX trigger. UISfx.client.lua publishes _G.BobaDropSfx with
+-- click/confirm/back/error functions; client script execution order isn't
+-- deterministic so we guard against it loading after this one.
+local function sfx(kind)
+    if _G.BobaDropSfx and _G.BobaDropSfx[kind] then _G.BobaDropSfx[kind]() end
+end
+
 -- Defensive lookup. The remote lives at ReplicatedStorage.Remotes.EnterQueue
 -- (matches the convention used by InputHandler, BoardPlaceholder, etc).
 -- If the engineer's server piece hasn't merged yet, log a warning and let
@@ -369,6 +376,7 @@ playScale.Parent = playBtn
 local playFired = false
 playBtn.MouseButton1Click:Connect(function()
     if playFired then return end
+    sfx("confirm")
     squish(playScale)
     if not enterQueueRemote then
         warn("[MainMenu] EnterQueue remote missing, PLAY no-op")
@@ -446,6 +454,7 @@ local function makePill(name, text, textSize, layoutOrder, onActivate)
     scaleObj.Parent = btn
 
     btn.MouseButton1Click:Connect(function()
+        sfx("click")
         squish(scaleObj)
         onActivate()
     end)
