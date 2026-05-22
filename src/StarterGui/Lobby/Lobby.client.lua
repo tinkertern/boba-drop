@@ -428,6 +428,54 @@ cancelBtn.MouseButton1Click:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
+-- Pill halo: a wide soft cream blob sitting behind the queue pill that
+-- breathes (alpha 0.85 to 0.70 and back) while matching. Anchors the eye to
+-- the bottom of the screen where the pill is and signals "actively waiting"
+-- without competing for focus. ZIndex 4 places it above the pearl field
+-- (ZIndex 1) but below the queue pill (ZIndex 10).
+--------------------------------------------------------------------------------
+
+local pillHalo = Instance.new("Frame")
+pillHalo.Name = "PillHalo"
+pillHalo.AnchorPoint = Vector2.new(0.5, 1)
+pillHalo.Size = UDim2.fromOffset(640, PILL_HEIGHT + 80)
+pillHalo.Position = UDim2.new(0.5, 0, 1, -PILL_BOTTOM_OFFSET + 20)
+pillHalo.BackgroundColor3 = UIConstants.Colors.Cream
+pillHalo.BackgroundTransparency = 1
+pillHalo.BorderSizePixel = 0
+pillHalo.ZIndex = 4
+pillHalo.Visible = false
+pillHalo.Parent = screenGui
+
+local pillHaloCorner = Instance.new("UICorner")
+pillHaloCorner.CornerRadius = UDim.new(0, 80)
+pillHaloCorner.Parent = pillHalo
+
+local haloBreatheTween
+local function startHaloBreathe()
+    if haloBreatheTween and haloBreatheTween.PlaybackState == Enum.PlaybackState.Playing then
+        return
+    end
+    pillHalo.Visible = true
+    pillHalo.BackgroundTransparency = 0.85
+    haloBreatheTween = TweenService:Create(
+        pillHalo,
+        TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+        { BackgroundTransparency = 0.70 }
+    )
+    haloBreatheTween:Play()
+end
+
+local function stopHaloBreathe()
+    if haloBreatheTween then
+        haloBreatheTween:Cancel()
+        haloBreatheTween = nil
+    end
+    pillHalo.BackgroundTransparency = 1
+    pillHalo.Visible = false
+end
+
+--------------------------------------------------------------------------------
 -- GameState binding: slide in on "matching", slide out otherwise. The
 -- ScreenGui's Enabled flag is owned by UIStateController; this just drives
 -- the pill animation + internal state reset within the visible window.
@@ -441,12 +489,14 @@ local function onGameStateChanged()
             slideIn()
         end
         startPearls()
+        startHaloBreathe()
     else
         if queuePillVisible then
             slideOut()
             queueActive = false
         end
         stopPearls()
+        stopHaloBreathe()
     end
 end
 
