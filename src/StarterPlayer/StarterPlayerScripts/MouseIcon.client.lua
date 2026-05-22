@@ -44,9 +44,14 @@ gui.DisplayOrder = 1000
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
+-- Hotspot guess: visible cursor tip is typically ~10% from left and ~10%
+-- from top of the cursor art. AnchorPoint shifts the image so that pixel
+-- lands at mouse.X / mouse.Y. Tune if the click registers off the tip.
+local HOTSPOT = Vector2.new(0.15, 0.1)
+
 local img = Instance.new("ImageLabel")
 img.Name = "Cursor"
-img.AnchorPoint = Vector2.new(0, 0)
+img.AnchorPoint = HOTSPOT
 img.Size = UDim2.fromOffset(CURSOR_SIZE, CURSOR_SIZE)
 img.Image = CURSORS.DEFAULT
 img.BackgroundTransparency = 1
