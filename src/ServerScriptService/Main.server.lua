@@ -89,10 +89,16 @@ end
 -- ----- Gravity tick driver (Day 4) -----
 -- Drives a per-room, per-player tick that nudges each active piece down by one
 -- row at GRAVITY_BASE seconds. Pieces lock when they can't fall further.
+--
+-- Snapshot _rooms each tick: _closeRoom (triggered by Leave, disconnect, or
+-- match-end → Leave) does table.remove on _rooms, which mid-iteration would
+-- cause the next room to be skipped. Today none of the close paths fire
+-- mid-tick (no yields inside this loop body), but the foot-gun is real if
+-- any future subscriber yields. table.clone is cheap; defense-in-depth.
 task.spawn(function()
     while true do
         task.wait(Constants.GRAVITY_BASE)
-        for _, room in roomManager._rooms do
+        for _, room in table.clone(roomManager._rooms) do
             if room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
                 for _, player in room.players do
                     if player and player.Parent then
@@ -114,7 +120,7 @@ task.spawn(function()
     local interval = Constants.GRAVITY_BASE / Constants.SOFT_DROP_MULT
     while true do
         task.wait(interval)
-        for userId, held in roomManager._softDropping do
+        for userId, held in table.clone(roomManager._softDropping) do
             if held then
                 local room = roomManager._playerRoom[userId]
                 if room and room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
