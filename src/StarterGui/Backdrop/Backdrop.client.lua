@@ -43,13 +43,17 @@ gradient.Parent = fill
 -- pearls and danger-row pulse during play.
 local MILK_TEA_BROWN = Color3.fromRGB(122, 94, 72)
 
+-- Top stop bumped from Backdrop to Cream (paler) so the cream-to-peach
+-- gradient is legible top-to-bottom instead of reading as flat peach.
+-- Sarah's 2026-05-21 screenshot showed the original Backdrop-to-Peach as
+-- nearly indistinguishable from a flat fill.
 local SEQ_MAIN_MENU = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, UIConstants.Colors.Backdrop),
+    ColorSequenceKeypoint.new(0, UIConstants.Colors.Cream),
     ColorSequenceKeypoint.new(1, UIConstants.Colors.Peach),
 })
 local SEQ_MATCHING = ColorSequence.new({
     ColorSequenceKeypoint.new(0, UIConstants.Colors.Peach),
-    ColorSequenceKeypoint.new(1, UIConstants.Colors.Backdrop),
+    ColorSequenceKeypoint.new(1, UIConstants.Colors.Cream),
 })
 local SEQ_IN_MATCH = ColorSequence.new({
     ColorSequenceKeypoint.new(0, MILK_TEA_BROWN),

@@ -37,40 +37,12 @@ screen.DisplayOrder = UIConstants.ZOrder.BlockedFlash + 20
 screen.Enabled = true
 screen.Parent = playerGui
 
---------------------------------------------------------------------------------
--- "?" pill: top-right, 80px LEFT of the LEAVE pill
---------------------------------------------------------------------------------
-
-local questionBtn = Instance.new("TextButton")
-questionBtn.Name = "QuestionBtn"
-questionBtn.AnchorPoint = Vector2.new(1, 0)
--- LEAVE pill sits at (1, -16, 0, 16) ~88w. We want to sit clearly LEFT
--- of it; (1, -100, 0, 20) leaves a ~12px gap and aligns the visual baseline.
-questionBtn.Position = UDim2.new(1, -100, 0, 20)
-questionBtn.Size = UDim2.fromOffset(36, 36)
-questionBtn.AutoButtonColor = false
-questionBtn.BorderSizePixel = 0
-questionBtn.BackgroundColor3 = UIConstants.Colors.Cream
-questionBtn.TextColor3 = UIConstants.Colors.TextDark
-questionBtn.FontFace = UIConstants.Fonts.Display
-questionBtn.TextSize = 20
-questionBtn.Text = "?"
-questionBtn.Visible = false
-questionBtn.Parent = screen
-
-local questionCorner = Instance.new("UICorner")
-questionCorner.CornerRadius = UIConstants.Corners.Pearl
-questionCorner.Parent = questionBtn
-
-local questionStroke = Instance.new("UIStroke")
-questionStroke.Color = UIConstants.Colors.StrokeWarm
-questionStroke.Thickness = 2
-questionStroke.Transparency = 0.5
-questionStroke.Parent = questionBtn
-
-local questionScale = Instance.new("UIScale")
-questionScale.Scale = 1
-questionScale.Parent = questionBtn
+-- The in-match "?" pill was removed 2026-05-21: MainMenu surfaces its own
+-- "?" pill (which calls _G.BobaDropHowToPlay.open()) for pre-match tutorial
+-- discovery, and the in-match HUD shouldn't carry a tutorial button that
+-- competes with the LEAVE pill for attention during play. The modal itself
+-- is preserved and remains accessible via the MainMenu pill or any other
+-- caller of _G.BobaDropHowToPlay.open().
 
 --------------------------------------------------------------------------------
 -- Modal scrim + panel
@@ -488,81 +460,24 @@ local function closeModal()
 end
 
 --------------------------------------------------------------------------------
--- "?" pulse: subtle 1.0 -> 1.05 -> 1.0 sine over 4s, loops while visible
+-- GameState safety: if the player somehow leaves the menu while the modal is
+-- open (e.g. server force-transitions into a match) the modal snaps closed
+-- silently so it doesn't sit on top of gameplay. The MainMenu "?" pill
+-- already gates opens to main_menu state, so this is a belt-and-suspenders.
 --------------------------------------------------------------------------------
 
-local PULSE_PERIOD = 4
-local pulseUp = TweenService:Create(
-    questionScale,
-    TweenInfo.new(PULSE_PERIOD / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-    { Scale = 1.05 }
-)
-local pulseDown = TweenService:Create(
-    questionScale,
-    TweenInfo.new(PULSE_PERIOD / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-    { Scale = 1.0 }
-)
-
-local pulseActive = false
-local function startPulse()
-    if pulseActive then return end
-    pulseActive = true
-    pulseUp:Play()
-end
-
-local function stopPulse()
-    pulseActive = false
-    pulseUp:Cancel()
-    pulseDown:Cancel()
-    questionScale.Scale = 1
-end
-
-pulseUp.Completed:Connect(function(state)
-    if pulseActive and state == Enum.PlaybackState.Completed then
-        pulseDown:Play()
-    end
-end)
-pulseDown.Completed:Connect(function(state)
-    if pulseActive and state == Enum.PlaybackState.Completed then
-        pulseUp:Play()
-    end
-end)
-
---------------------------------------------------------------------------------
--- GameState binding: "?" only visible in_match
---------------------------------------------------------------------------------
-
-local function refreshVisibility()
+player:GetAttributeChangedSignal("GameState"):Connect(function()
     local state = player:GetAttribute("GameState")
-    local inMatch = (state == "in_match")
-    questionBtn.Visible = inMatch
-    if inMatch then
-        startPulse()
-    else
-        stopPulse()
-        -- If we left the match while modal was open, snap it closed silently.
-        -- Restore Position to centered so the next open tween starts from a
-        -- clean state after the openModal re-seat to (0.5, 1.2).
-        if isOpen then
-            isOpen = false
-            scrim.Visible = false
-            panel.Position = UDim2.fromScale(0.5, 0.5)
-        end
+    if state ~= "main_menu" and isOpen then
+        isOpen = false
+        scrim.Visible = false
+        panel.Position = UDim2.fromScale(0.5, 0.5)
     end
-end
-
-refreshVisibility()
-player:GetAttributeChangedSignal("GameState"):Connect(refreshVisibility)
+end)
 
 --------------------------------------------------------------------------------
 -- Click handlers
 --------------------------------------------------------------------------------
-
-questionBtn.MouseButton1Click:Connect(function()
-    sfx("click")
-    squish(questionScale)
-    openModal()
-end)
 
 closeBtn.MouseButton1Click:Connect(function()
     sfx("back")

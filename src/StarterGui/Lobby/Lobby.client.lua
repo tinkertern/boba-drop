@@ -66,11 +66,13 @@ local PEARL_COUNT = 8
 local PEARL_SIZE = 36
 local PEARL_TRANSPARENCY = 0.7
 
+-- PearlWhite removed: it blends with the peach-toned backdrop and reads as
+-- nothing in the drift. Three high-contrast variants left so every pearl in
+-- the field is visible.
 local pearlColors = {
     UIConstants.Colors.PearlBrown,
     UIConstants.Colors.PearlPink,
     UIConstants.Colors.PearlGreen,
-    UIConstants.Colors.PearlWhite,
 }
 
 local pearlContainer = Instance.new("Frame")

@@ -107,6 +107,18 @@ container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
 container.Parent = screenGui
 
+-- Re-parent the label to the container with a fixed pixel offset above it.
+-- Previously the label sat at Y=0.1 (screen scale) and the container at
+-- Y=0.5 with height 0.65 (so container top = 0.175). On wide-short
+-- viewports (~910px tall) those scaled positions collide and the label's
+-- top edge gets clipped by the container, producing "OPPONENT" -> "ORROMENT"
+-- in Sarah's 2026-05-21 screenshot. Glueing the label to the container via
+-- AnchorPoint(0.5, 1) + Position(0.5, 0, 0, -8) keeps a constant 8px gap
+-- regardless of aspect ratio.
+label.Parent = container
+label.AnchorPoint = Vector2.new(0.5, 1)
+label.Position = UDim2.new(0.5, 0, 0, -8)
+
 local containerCorner = Instance.new("UICorner")
 containerCorner.CornerRadius = UIConstants.Corners.Card
 containerCorner.Parent = container

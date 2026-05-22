@@ -667,7 +667,11 @@ local function traceLanding(pivotRow, pivotCol, dr, dc)
     return 1
 end
 
--- Build a single ghost pearl (faded outline, no highlight) at the given cell.
+-- Build a single ghost pearl: an outline-only ring in the pearl's color so
+-- the landing position reads clearly against the cream cup floor without
+-- ever being mistaken for a real (filled) pearl. Solid stroke at thickness
+-- 3 gives enough weight to be legible against the new milk-tea backdrop;
+-- BackgroundTransparency=1 keeps the cell visible inside the outline.
 local function buildGhostPearl(row, col, color)
     local cell = cellsByPos[posKey(row, col)]
     if not cell then return nil end
@@ -677,7 +681,7 @@ local function buildGhostPearl(row, col, color)
     p.Position = UDim2.fromScale(0.5, 0.5)
     p.AnchorPoint = Vector2.new(0.5, 0.5)
     p.BackgroundColor3 = color
-    p.BackgroundTransparency = 0.75
+    p.BackgroundTransparency = 1
     p.BorderSizePixel = 0
     p.ZIndex = 2
     p.Parent = cell
@@ -687,9 +691,9 @@ local function buildGhostPearl(row, col, color)
     corner.Parent = p
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = UIConstants.Colors.StrokeWarm
-    stroke.Thickness = 2
-    stroke.Transparency = 0.5
+    stroke.Color = color
+    stroke.Thickness = 3
+    stroke.Transparency = 0.15
     stroke.Parent = p
     return p
 end

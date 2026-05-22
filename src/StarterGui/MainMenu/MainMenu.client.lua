@@ -58,11 +58,13 @@ local PEARL_COUNT = 8
 local PEARL_SIZE = 36
 local PEARL_TRANSPARENCY = 0.7
 
+-- PearlWhite removed: it blends with the peach-toned backdrop and reads as
+-- nothing in the drift. Three high-contrast variants left so every pearl in
+-- the field is visible.
 local pearlColors = {
     UIConstants.Colors.PearlBrown,
     UIConstants.Colors.PearlPink,
     UIConstants.Colors.PearlGreen,
-    UIConstants.Colors.PearlWhite,
 }
 
 local pearlContainer = Instance.new("Frame")
@@ -229,7 +231,7 @@ pulseUp:Play()
 local greetingFrame = Instance.new("Frame")
 greetingFrame.Name = "Greeting"
 greetingFrame.AnchorPoint = Vector2.new(0, 0)
-greetingFrame.Position = UDim2.fromOffset(20, -60) -- starts above the screen, tweens down
+greetingFrame.Position = UDim2.fromOffset(20, -60) -- starts above the screen, tweens down to clear Roblox's top-bar chrome
 greetingFrame.Size = UDim2.fromOffset(200, 56)
 greetingFrame.BackgroundTransparency = 1
 greetingFrame.ZIndex = 5
@@ -324,7 +326,7 @@ nameLabel.Parent = textBlock
 local greetingDriftIn = TweenService:Create(
     greetingFrame,
     UIConstants.tween(0.5, "UI"),
-    { Position = UDim2.fromOffset(20, 20) }
+    { Position = UDim2.fromOffset(20, 44) }
 )
 greetingDriftIn:Play()
 
@@ -430,7 +432,10 @@ local function makePill(name, text, textSize, layoutOrder, onActivate)
     btn.Size = UDim2.fromOffset(120, 44)
     btn.AutoButtonColor = false
     btn.BorderSizePixel = 0
-    btn.BackgroundColor3 = UIConstants.Colors.Peach
+    -- Cream background instead of Peach so the pill silhouette pops against
+    -- the peach-toned gradient backdrop. Peach-on-peach was reading as text
+    -- floating on nothing in Sarah's 2026-05-21 screenshot.
+    btn.BackgroundColor3 = UIConstants.Colors.Cream
     btn.TextColor3 = UIConstants.Colors.TextDark
     btn.FontFace = UIConstants.Fonts.Display
     btn.TextSize = textSize
