@@ -20,7 +20,41 @@ Players.PlayerAdded:Connect(function(player)
     player:SetAttribute("GameState", "main_menu")
 end)
 
+-- ----- Per-player per-remote rate limiter -----
+-- Token-bucket guard on every input/lifecycle remote. Legitimate keyboard auto-
+-- repeat is ~30Hz; rates below are sized to comfortably pass real play and reject
+-- only obvious spam. Rejection is silent — the gameplay layer never sees the
+-- excess inputs, so a misbehaving client just sees their inputs ignored.
+--
+-- Tokens refill continuously at `perSecond`. Bucket caps at `burst` so a key
+-- that's been idle doesn't accumulate infinite credit. State is keyed by UserId
+-- and cleared on PlayerRemoving.
+local rateBuckets = {} -- [userId] = { [eventName] = { tokens, lastRefill } }
+
+local function checkRate(player, eventName, perSecond, burst)
+    local userId = player.UserId
+    local userBuckets = rateBuckets[userId]
+    if not userBuckets then
+        userBuckets = {}
+        rateBuckets[userId] = userBuckets
+    end
+    local now = os.clock()
+    local bucket = userBuckets[eventName]
+    if not bucket then
+        userBuckets[eventName] = { tokens = burst - 1, lastRefill = now }
+        return true
+    end
+    bucket.tokens = math.min(burst, bucket.tokens + (now - bucket.lastRefill) * perSecond)
+    bucket.lastRefill = now
+    if bucket.tokens >= 1 then
+        bucket.tokens -= 1
+        return true
+    end
+    return false
+end
+
 Players.PlayerRemoving:Connect(function(player)
+    rateBuckets[player.UserId] = nil
     disconnectHandler:onPlayerLeaving(player)
 end)
 
@@ -38,6 +72,7 @@ if Remotes then
 
     if moveRemote then
         moveRemote.OnServerEvent:Connect(function(player, payload)
+            if not checkRate(player, "move", 25, 8) then return end
             payload = payload or {}
             if payload.direction ~= "left" and payload.direction ~= "right" then return end
             roomManager:applyInput(player, { type = "move", direction = payload.direction })
@@ -45,6 +80,7 @@ if Remotes then
     end
     if rotateRemote then
         rotateRemote.OnServerEvent:Connect(function(player, payload)
+            if not checkRate(player, "rotate", 25, 5) then return end
             payload = payload or {}
             if payload.direction ~= "cw" and payload.direction ~= "ccw" then return end
             roomManager:applyInput(player, { type = "rotate", direction = payload.direction })
@@ -52,33 +88,40 @@ if Remotes then
     end
     if softDropRemote then
         softDropRemote.OnServerEvent:Connect(function(player, payload)
+            -- Toggles only, not per-row drop — generous limit covers rapid taps.
+            if not checkRate(player, "softDrop", 15, 5) then return end
             payload = payload or {}
             roomManager:setSoftDrop(player, payload.held == true)
         end)
     end
     if hardDropRemote then
         hardDropRemote.OnServerEvent:Connect(function(player, payload)
+            if not checkRate(player, "hardDrop", 10, 3) then return end
             roomManager:applyInput(player, { type = "hardDrop" })
         end)
     end
     if rematchRemote then
         rematchRemote.OnServerEvent:Connect(function(player, payload)
+            if not checkRate(player, "rematch", 2, 3) then return end
             roomManager:registerRematchVote(player, true)
         end)
     end
     if leaveRemote then
         leaveRemote.OnServerEvent:Connect(function(player, payload)
+            if not checkRate(player, "leaveMatch", 2, 3) then return end
             roomManager:registerRematchVote(player, false)
         end)
     end
     if enterQueueRemote then
         enterQueueRemote.OnServerEvent:Connect(function(player)
+            if not checkRate(player, "enterQueue", 3, 5) then return end
             if roomManager:roomOf(player) then return end
             roomManager:enqueuePlayer(player)
         end)
     end
     if leaveQueueRemote then
         leaveQueueRemote.OnServerEvent:Connect(function(player)
+            if not checkRate(player, "leaveQueue", 3, 5) then return end
             roomManager:leaveQueue(player)
         end)
     end
