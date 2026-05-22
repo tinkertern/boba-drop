@@ -107,6 +107,15 @@ container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
 container.Parent = screenGui
 
+-- Lock the mini cup to the same 6:14 aspect as the main board so the cells
+-- inside (sized 1/6 width by 1/14 height of the container via UIGridLayout)
+-- stay square on every viewport. Without this, ultrawide and tall-portrait
+-- screens render non-square cells and the pearls clip to oblong UICorners.
+local aspect = Instance.new("UIAspectRatioConstraint")
+aspect.AspectRatio = BOARD_WIDTH / BOARD_TOTAL_HEIGHT
+aspect.DominantAxis = Enum.DominantAxis.Height
+aspect.Parent = container
+
 -- Re-parent the label to the container with a fixed pixel offset above it.
 -- Previously the label sat at Y=0.1 (screen scale) and the container at
 -- Y=0.5 with height 0.65 (so container top = 0.175). On wide-short
