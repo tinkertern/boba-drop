@@ -105,6 +105,13 @@ container.Size = UDim2.fromScale(0.18, 0.65)
 container.BackgroundColor3 = UIConstants.Colors.Cream
 container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
+-- ClipsDescendants masks the Scale-based CellSize + UIPadding interaction:
+-- 14 cells at container_height/14 each fits the container exactly, so the
+-- 6px UIPadding offset pushes the bottom of the grid 6px PAST the cup's
+-- cream background. Aspect-locking the cup shrank the overflow's relative
+-- size, making the "cells below the cup" stripe visible in Sarah's
+-- 2026-05-21 playtest. Clipping to the container hides the overflow.
+container.ClipsDescendants = true
 container.Parent = screenGui
 
 -- Lock the mini cup to the same 6:14 aspect as the main board so the cells
