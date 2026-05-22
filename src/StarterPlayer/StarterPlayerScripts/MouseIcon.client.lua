@@ -31,10 +31,15 @@ local mouse = player:GetMouse()
 
 UserInputService.MouseIconEnabled = false
 
+-- IgnoreGuiInset = false aligns the ScreenGui's coordinate space with the
+-- below-topbar coords that Mouse.X / Mouse.Y and GetGuiObjectsAtPosition
+-- already use. With inset = true the cursor visual rendered 36px above
+-- the hardware position, so hover hit-testing missed buttons the user
+-- thought they were over.
 local gui = Instance.new("ScreenGui")
 gui.Name = "CustomCursor"
 gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
+gui.IgnoreGuiInset = false
 gui.DisplayOrder = 1000
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
