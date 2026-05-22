@@ -419,7 +419,7 @@ end
 local function friendlyReason(reason, didYouWin)
     if reason == "overflow" then
         return didYouWin and "their cup overflowed" or "your cup overflowed"
-    elseif reason == "forfeit" or reason == "disconnect" then
+    elseif reason == "forfeit" or reason == "disconnect" or reason == "leave" then
         return didYouWin and "opponent left" or "you left the match"
     end
     return nil
