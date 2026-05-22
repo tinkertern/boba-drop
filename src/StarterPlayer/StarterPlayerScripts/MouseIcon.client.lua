@@ -47,7 +47,7 @@ gui.Parent = playerGui
 -- Hotspot guess: visible cursor tip is typically ~10% from left and ~10%
 -- from top of the cursor art. AnchorPoint shifts the image so that pixel
 -- lands at mouse.X / mouse.Y. Tune if the click registers off the tip.
-local HOTSPOT = Vector2.new(0.15, 0.1)
+local HOTSPOT = Vector2.new(0.35, 0.25)
 
 local img = Instance.new("ImageLabel")
 img.Name = "Cursor"
