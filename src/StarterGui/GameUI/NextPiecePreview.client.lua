@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Themes = require(ReplicatedStorage.Shared.UI.Themes)
 local Events = require(ReplicatedStorage.Shared.Events)
 
 local player = Players.LocalPlayer
@@ -20,13 +21,20 @@ local localUserId = tostring(player.UserId)
 -- Color mapping (inlined, intentionally not shared with BoardPlaceholder)
 --------------------------------------------------------------------------------
 
+-- Active palette is read on every paint. The preview repaints when the
+-- player equips a different theme (handler near the bottom of this file).
+local function activePalette()
+    return Themes.byKey(player:GetAttribute("BobaDropActiveTheme") or "Default")
+end
+
 local function colorForServerName(name)
-    if name == "Brown" then return UIConstants.Colors.PearlBrown
-    elseif name == "Pink" then return UIConstants.Colors.PearlPink
-    elseif name == "Green" then return UIConstants.Colors.PearlGreen
-    elseif name == "White" then return UIConstants.Colors.PearlWhite
+    local palette = activePalette()
+    if name == "Brown" then return palette.PearlBrown
+    elseif name == "Pink" then return palette.PearlPink
+    elseif name == "Green" then return palette.PearlGreen
+    elseif name == "White" then return palette.PearlWhite
     end
-    return UIConstants.Colors.PearlWhite
+    return palette.PearlWhite
 end
 
 --------------------------------------------------------------------------------
@@ -235,12 +243,24 @@ local function buildMiniPair(slotFrame, pieceData)
     end
 end
 
+-- Cached queue so a mid-match theme change can repaint the preview without
+-- waiting for the next NextPieceQueueUpdate.
+local lastQueue = nil
+
 local function applyQueue(queue)
+    lastQueue = queue
     local first = queue and queue[1]
     local second = queue and queue[2]
     buildMiniPair(slot1, first)
     buildMiniPair(slot2, second)
 end
+
+-- Repaint preview pearls when the player equips a different theme.
+player:GetAttributeChangedSignal("BobaDropActiveTheme"):Connect(function()
+    if lastQueue then
+        applyQueue(lastQueue)
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- Remote subscription

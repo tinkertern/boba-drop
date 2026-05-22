@@ -20,12 +20,21 @@ end
 
 function GamePasses:_setup()
     Players.PlayerAdded:Connect(function(player)
+        -- Seed the default active theme attribute so the inventory + apply
+        -- pipeline always have a value to read. Client-side equip writes
+        -- overwrite this for the rest of the session.
+        if player:GetAttribute("BobaDropActiveTheme") == nil then
+            player:SetAttribute("BobaDropActiveTheme", "Default")
+        end
         self:_cacheOwnership(player, self.PREMIUM_THEMES_PACK_ID)
     end)
     Players.PlayerRemoving:Connect(function(player)
         self._ownership[player.UserId] = nil
     end)
     for _, player in Players:GetPlayers() do
+        if player:GetAttribute("BobaDropActiveTheme") == nil then
+            player:SetAttribute("BobaDropActiveTheme", "Default")
+        end
         self:_cacheOwnership(player, self.PREMIUM_THEMES_PACK_ID)
     end
     -- Filter by gamePassId so the ownership cache cannot be poisoned by
@@ -35,6 +44,9 @@ function GamePasses:_setup()
         if wasPurchased then
             self._ownership[player.UserId] = self._ownership[player.UserId] or {}
             self._ownership[player.UserId][gamePassId] = true
+            -- Mirror to a player attribute so the ThemesInventory client can
+            -- react without a RemoteEvent round-trip.
+            player:SetAttribute("BobaDropOwnsPremiumThemes", true)
             print(("[GamePasses] %s purchased Premium Themes Pack"):format(player.Name))
         end
     end)
@@ -50,6 +62,14 @@ function GamePasses:_cacheOwnership(player, gamePassId)
     else
         self._ownership[player.UserId][gamePassId] = false
         warn(("[GamePasses] UserOwnsGamePassAsync failed for %s"):format(player.Name))
+    end
+    -- Mirror ownership of the Premium Themes Pack to a player attribute so
+    -- the ThemesInventory client (which can't call DataStoreService /
+    -- MarketplaceService directly without a remote) can read it. Only the
+    -- pass we care about gets mirrored; future passes would each get their
+    -- own attribute key.
+    if gamePassId == self.PREMIUM_THEMES_PACK_ID then
+        player:SetAttribute("BobaDropOwnsPremiumThemes", self._ownership[player.UserId][gamePassId] == true)
     end
 end
 

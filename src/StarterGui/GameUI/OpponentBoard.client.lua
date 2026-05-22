@@ -52,6 +52,13 @@ end
 --
 -- Same shape as the main board's colorForServerName. Garbage maps to IceBase
 -- so the in-cup garbage block reads as the same pastel ice as the main board.
+--
+-- TODO v1.1: opponent's theme is not broadcast yet, so opponent pearls render
+-- with the Default palette (which is identical to UIConstants.Colors.Pearl*).
+-- When opponent theme broadcast lands, swap this to Themes.byKey(opponentKey)
+-- where opponentKey is piped from a server attribute set on the opponent
+-- player. For now, the local player's equipped theme does NOT affect the
+-- opponent's cup, which is what we want anyway (their cup is THEIR theme).
 --------------------------------------------------------------------------------
 
 local function colorForServerName(name)

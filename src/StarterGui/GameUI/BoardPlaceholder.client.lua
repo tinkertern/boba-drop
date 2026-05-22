@@ -29,6 +29,7 @@ local TweenService = game:GetService("TweenService")
 local POP_SOUND_ID = "rbxassetid://6732690176"
 
 local UIConstants = require(ReplicatedStorage.Shared.UI.UIConstants)
+local Themes = require(ReplicatedStorage.Shared.UI.Themes)
 
 local BOARD_WIDTH = 6
 local BOARD_VISIBLE_HEIGHT = 12
@@ -69,7 +70,11 @@ container.Name = "BoardFrame"
 container.AnchorPoint = Vector2.new(0.5, 0.5)
 container.Position = UDim2.fromScale(0.5, 0.5)
 container.Size = UDim2.fromScale(0.45, 0.85)
-container.BackgroundColor3 = UIConstants.Colors.Cream
+-- Container BackgroundColor is initially set to the active theme's CupTint
+-- (Default cup tint is the same warm cream we used before). The
+-- BobaDropActiveTheme attribute listener at the bottom of the file updates
+-- this when the player equips a different theme.
+container.BackgroundColor3 = Themes.byKey(player:GetAttribute("BobaDropActiveTheme") or "Default").CupTint
 container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
 container.Parent = screenGui
@@ -133,16 +138,26 @@ local function posKey(row, col)
     return row .. "_" .. col
 end
 
+-- Active theme palette is read on every paint call. The player's
+-- BobaDropActiveTheme attribute is the source of truth; Themes.byKey falls
+-- back to Default for unknown keys.
+local function activePalette()
+    return Themes.byKey(player:GetAttribute("BobaDropActiveTheme") or "Default")
+end
+
 local function colorForServerName(name)
     -- Server sends "Brown" / "Pink" / "Green" / "White" / "Garbage". Map to
-    -- the UIConstants palette tokens.
-    if name == "Brown" then return UIConstants.Colors.PearlBrown
-    elseif name == "Pink" then return UIConstants.Colors.PearlPink
-    elseif name == "Green" then return UIConstants.Colors.PearlGreen
-    elseif name == "White" then return UIConstants.Colors.PearlWhite
+    -- the active theme's palette. Garbage stays themed via UIConstants since
+    -- it's a worry-pastel that should read as "incoming danger" regardless
+    -- of which boba flavor the player picked.
+    local palette = activePalette()
+    if name == "Brown" then return palette.PearlBrown
+    elseif name == "Pink" then return palette.PearlPink
+    elseif name == "Green" then return palette.PearlGreen
+    elseif name == "White" then return palette.PearlWhite
     elseif name == "Garbage" then return UIConstants.Colors.GarbageBlock or UIConstants.Colors.PearlWhite
     end
-    return UIConstants.Colors.PearlWhite
+    return palette.PearlWhite
 end
 
 local function makeCell(row, col, isDanger)
@@ -328,8 +343,15 @@ end
 -- function only paints/updates cells the snapshot explicitly contains.
 -- Destruction is the caller's job: ChainCompleted uses event.steps[i].cellsPopped,
 -- RoundEnd uses clearAll(). PieceLocked never destroys via this path.
+--
+-- Side-effect: caches the snapshot in lastLockedSnapshot so a mid-match theme
+-- change can do a full repaint of locked pearls without waiting for the next
+-- PieceLocked / ChainCompleted event.
+local lastLockedSnapshot = nil
+
 local function paintFromSnapshot(cells)
     if type(cells) ~= "table" then return end
+    lastLockedSnapshot = cells
     for row = 1, BOARD_TOTAL_HEIGHT do
         local rowTable = rowLookup(cells, row)
         for col = 1, BOARD_WIDTH do
@@ -1079,6 +1101,26 @@ if roundEndRemote then
         -- there's no overflow risk to telegraph.
         stopDangerPulse()
         setDangerRowStatic(DANGER_BASELINE_TRANSPARENCY)
+        lastLockedSnapshot = nil
     end)
 end
+
+-- Theme change: repaint the cup tint + all locked pearls from the cached
+-- snapshot so an equip during a match takes effect immediately. The active
+-- piece overlay is owned by ActivePieceUpdate, which fires every tick, so we
+-- don't need to touch it here, it'll repaint with the new palette on its
+-- next event. Ghost pearls are the same: rebuilt every ActivePieceUpdate.
+player:GetAttributeChangedSignal("BobaDropActiveTheme"):Connect(function()
+    local palette = activePalette()
+    container.BackgroundColor3 = palette.CupTint
+    if lastLockedSnapshot then
+        -- Wipe locked pearls first so the repaint is fresh; the snapshot is
+        -- the authoritative source for which cells should be painted.
+        for key, entry in pairs(lockedPearls) do
+            if entry.pearl then entry.pearl:Destroy() end
+            lockedPearls[key] = nil
+        end
+        paintFromSnapshot(lastLockedSnapshot)
+    end
+end)
 

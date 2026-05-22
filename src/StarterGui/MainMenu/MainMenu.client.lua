@@ -468,8 +468,10 @@ local function makePill(name, text, textSize, layoutOrder, onActivate)
 end
 
 makePill("ThemesBtn", "THEMES", UIConstants.TextSizes.Body, 1, function()
-    if _G.BobaDropShop and _G.BobaDropShop.open then
-        _G.BobaDropShop.open()
+    -- THEMES now opens the inventory (owned + locked themes side-by-side).
+    -- Locked cards in the inventory bounce the player into the Shop.
+    if _G.BobaDropThemes and _G.BobaDropThemes.open then
+        _G.BobaDropThemes.open()
     end
 end)
 
