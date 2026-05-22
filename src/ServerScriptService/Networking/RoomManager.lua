@@ -150,6 +150,29 @@ function RoomManager:treatAsLeave(player)
     return true
 end
 
+-- Single entry point for "the player tapped a LEAVE button." Handles both
+-- the in-match Pause→Leave flow (forfeit the round, then close) and the
+-- match-end Leave-instead-of-Rematch flow (decline the rematch, close).
+-- Previously the LeaveMatch remote was wired directly to registerRematchVote
+-- with accept=false, which silently early-returned during the playing phase
+-- — so the in-match LEAVE button did nothing server-side. This unifies it.
+function RoomManager:requestLeave(player)
+    local room = self:roomOf(player)
+    if not room then return end
+    if room.phase == "playing" then
+        -- Mid-match leave is a forfeit. Cascading through forfeitRound makes
+        -- the opponent's MatchEnd panel show "opponent left" via reason; the
+        -- _closeRoom call wipes the leaving player back to main_menu after
+        -- the cascade so they don't get stuck on their own MatchEnd panel.
+        if room.gameState and room.gameState:phase() == "playing" then
+            room.gameState:forfeitRound(tostring(player.UserId), "leave")
+        end
+        self:_closeRoom(room)
+    elseif room.phase == "postMatch" then
+        self:registerRematchVote(player, false)
+    end
+end
+
 function RoomManager:registerRematchVote(player, accept)
     local room = self:roomOf(player)
     if not room or room.phase ~= "postMatch" then return end

@@ -109,7 +109,10 @@ if Remotes then
     if leaveRemote then
         leaveRemote.OnServerEvent:Connect(function(player, payload)
             if not checkRate(player, "leaveMatch", 2, 3) then return end
-            roomManager:registerRematchVote(player, false)
+            -- Both in-match (PauseConfirm) and match-end (Leave-instead-of-
+            -- Rematch) fire this remote. RoomManager:requestLeave routes by
+            -- room.phase so each path does the right thing.
+            roomManager:requestLeave(player)
         end)
     end
     if enterQueueRemote then
