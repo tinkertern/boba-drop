@@ -194,8 +194,18 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.StartCorner = Enum.StartCorner.TopLeft
 grid.Parent = gridWrap
 
+-- Inset the scroll content slightly so card UIStrokes (which render half
+-- outside the card bounds) don't get cropped by the ScrollingFrame's
+-- ClipsDescendants. 4px on each side is enough to clear a 1.5px stroke.
+local gridPadding = Instance.new("UIPadding")
+gridPadding.PaddingTop = UDim.new(0, 4)
+gridPadding.PaddingBottom = UDim.new(0, 4)
+gridPadding.PaddingLeft = UDim.new(0, 4)
+gridPadding.PaddingRight = UDim.new(0, 4)
+gridPadding.Parent = gridWrap
+
 grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    gridWrap.CanvasSize = UDim2.fromOffset(0, grid.AbsoluteContentSize.Y)
+    gridWrap.CanvasSize = UDim2.fromOffset(0, grid.AbsoluteContentSize.Y + 8)
 end)
 
 --------------------------------------------------------------------------------
