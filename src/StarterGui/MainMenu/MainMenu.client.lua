@@ -390,17 +390,70 @@ playBtn.MouseButton1Click:Connect(function()
     -- away when GameState flips to "matching".
     playBtn.AutoButtonColor = false
     playBtn.Active = false
-    enterQueueRemote:FireServer({})
+    enterQueueRemote:FireServer({ mode = "versus" })
+end)
+
+--------------------------------------------------------------------------------
+-- PRACTICE button: secondary CTA below PLAY. Same EnterQueue remote with
+-- mode = "practice" so the server can route to a solo room with no opponent
+-- and no incoming garbage. Visual is smaller / quieter than PLAY so the
+-- versus flow stays primary.
+--------------------------------------------------------------------------------
+
+local practiceBtn = Instance.new("TextButton")
+practiceBtn.Name = "PracticeBtn"
+practiceBtn.Size = UDim2.fromOffset(200, 44)
+practiceBtn.Position = UDim2.new(0.5, 0, 0.5, 72)
+practiceBtn.AnchorPoint = Vector2.new(0.5, 0)
+practiceBtn.AutoButtonColor = false
+practiceBtn.BorderSizePixel = 0
+practiceBtn.BackgroundColor3 = UIConstants.Colors.Cream
+practiceBtn.TextColor3 = UIConstants.Colors.TextDark
+practiceBtn.FontFace = UIConstants.Fonts.Display
+practiceBtn.TextSize = 22
+practiceBtn.Text = "PRACTICE"
+practiceBtn.ZIndex = 10
+practiceBtn.Parent = screenGui
+
+local practiceCorner = Instance.new("UICorner")
+practiceCorner.CornerRadius = UIConstants.Corners.Button
+practiceCorner.Parent = practiceBtn
+
+local practiceStroke = Instance.new("UIStroke")
+practiceStroke.Color = UIConstants.Colors.StrokeWarm
+practiceStroke.Thickness = 1.5
+practiceStroke.Transparency = 0.35
+practiceStroke.Parent = practiceBtn
+
+local practiceScale = Instance.new("UIScale")
+practiceScale.Scale = 1
+practiceScale.Parent = practiceBtn
+
+local practiceFired = false
+practiceBtn.MouseButton1Click:Connect(function()
+    if practiceFired or playFired then return end
+    sfx("confirm")
+    squish(practiceScale)
+    if not enterQueueRemote then
+        warn("[MainMenu] EnterQueue remote missing, PRACTICE no-op")
+        return
+    end
+    practiceFired = true
+    practiceBtn.AutoButtonColor = false
+    practiceBtn.Active = false
+    enterQueueRemote:FireServer({ mode = "practice" })
 end)
 
 -- Reset on returning to the menu (match end -> main_menu). The ScreenGui
 -- persists across the in_match window (ResetOnSpawn = false), so the
--- playFired latch and Active flag need an explicit reset.
+-- fired latches and Active flags need an explicit reset.
 player:GetAttributeChangedSignal("GameState"):Connect(function()
     local state = player:GetAttribute("GameState")
     if state == "main_menu" then
         playFired = false
         playBtn.Active = true
+        practiceFired = false
+        practiceBtn.Active = true
     end
 end)
 

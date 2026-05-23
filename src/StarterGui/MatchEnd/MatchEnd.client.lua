@@ -469,6 +469,11 @@ matchEndRemote.OnClientEvent:Connect(function(event)
     local winnerId = event.winner and tostring(event.winner) or nil
     local loserId = event.loser and tostring(event.loser) or nil
 
+    -- Practice runs have no opponent. The server tags the payload with
+    -- mode = "practice" so the header / score / chain rows / button copy
+    -- collapse to single-player variants.
+    local isPractice = (event.mode == "practice")
+
     -- Result classification.
     local result
     if not winnerId or (winnerId and loserId and winnerId == loserId) then
@@ -478,13 +483,23 @@ matchEndRemote.OnClientEvent:Connect(function(event)
     else
         result = "lose"
     end
-    setHeader(result)
+    if isPractice then
+        header.Text = "GAME OVER"
+        header.TextColor3 = UIConstants.Colors.TextDark
+    else
+        setHeader(result)
+    end
+
+    rematchBtn.Text = isPractice and "AGAIN" or "REMATCH"
 
     -- Reason subtitle from the most recent RoundEnd. Prefer RoundEnd's winner
     -- field for the won/lost determination since RoundEnd is what carries the
     -- reason; fall back to MatchEnd's winner if RoundEnd never fired.
+    -- Practice runs always end on the player's own overflow so the subtitle
+    -- would just say "your cup overflowed", which the GAME OVER header
+    -- already implies. Skip the row in practice mode.
     local subtitleText = nil
-    if lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
+    if not isPractice and lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
         local roundWinnerLocal = (lastRoundEnd.winner == localId)
             or (lastRoundEnd.winner == nil and winnerId == localId)
         subtitleText = friendlyReason(lastRoundEnd.reason, roundWinnerLocal)
@@ -537,9 +552,14 @@ matchEndRemote.OnClientEvent:Connect(function(event)
         theirChain = tonumber(chains[opponentId]) or tonumber(chains[tonumber(opponentId)]) or 0
     end
 
-    -- Reset content for animation entry.
-    scoreRow.Text = "FINAL: 0 vs 0"
-    chainRow.Text = "BEST CHAIN: 0x"
+    -- Reset content for animation entry. Practice variants omit the vs side.
+    if isPractice then
+        scoreRow.Text = "FINAL: 0"
+        chainRow.Text = "BEST CHAIN: 0x"
+    else
+        scoreRow.Text = "FINAL: 0 vs 0"
+        chainRow.Text = "BEST CHAIN: 0x"
+    end
 
     -- Button reset: rematch enabled immediately, leave on a brief cooldown so
     -- a fat-fingered tap can't bail before the result registers.
@@ -549,34 +569,51 @@ matchEndRemote.OnClientEvent:Connect(function(event)
         setButtonEnabled(leaveBtn, true)
     end)
 
-    -- Slide the panel in, then count up score, then chain.
+    -- Slide the panel in, then count up score, then chain. Practice format
+    -- strips the "vs N" side so the row reads as a solo stat.
     local slideTween = slideIn()
     local resultForBurst = result
     currentStatsThread = task.spawn(function()
         slideTween.Completed:Wait()
         -- Win payoff layer: confetti burst from the panel's top edge.
-        if resultForBurst == "win" then
+        -- Practice runs don't trigger confetti (overflow is always the end).
+        if resultForBurst == "win" and not isPractice then
             spawnConfetti()
         end
-        -- Count score row (track our number + their number together).
+        -- Count score row.
         local start = os.clock()
         while true do
             local elapsed = os.clock() - start
             local t = math.min(elapsed / COUNTUP_DURATION, 1)
             local eased = 1 - (1 - t) * (1 - t)
             local y = math.floor(yourScore * eased + 0.5)
-            local th = math.floor(theirScore * eased + 0.5)
-            scoreRow.Text = ("FINAL: %d vs %d"):format(y, th)
+            if isPractice then
+                scoreRow.Text = ("FINAL: %d"):format(y)
+            else
+                local th = math.floor(theirScore * eased + 0.5)
+                scoreRow.Text = ("FINAL: %d vs %d"):format(y, th)
+            end
             if t >= 1 then break end
             RunService.RenderStepped:Wait()
         end
-        scoreRow.Text = ("FINAL: %d vs %d"):format(yourScore, theirScore)
+        if isPractice then
+            scoreRow.Text = ("FINAL: %d"):format(yourScore)
+        else
+            scoreRow.Text = ("FINAL: %d vs %d"):format(yourScore, theirScore)
+        end
 
         -- Then chain row (short, satisfying ramp).
-        countUp(chainRow, math.max(yourChain, theirChain), function(_)
-            return ("BEST CHAIN: %dx  |  %dx"):format(yourChain, theirChain)
-        end)
-        chainRow.Text = ("BEST CHAIN: %dx  |  %dx"):format(yourChain, theirChain)
+        if isPractice then
+            countUp(chainRow, yourChain, function(v)
+                return ("BEST CHAIN: %dx"):format(v)
+            end)
+            chainRow.Text = ("BEST CHAIN: %dx"):format(yourChain)
+        else
+            countUp(chainRow, math.max(yourChain, theirChain), function(_)
+                return ("BEST CHAIN: %dx  |  %dx"):format(yourChain, theirChain)
+            end)
+            chainRow.Text = ("BEST CHAIN: %dx  |  %dx"):format(yourChain, theirChain)
+        end
         currentStatsThread = nil
     end)
 
