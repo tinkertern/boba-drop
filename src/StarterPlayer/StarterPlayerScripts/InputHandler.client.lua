@@ -9,8 +9,18 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GuiService = game:GetService("GuiService")
 
 local Events = require(ReplicatedStorage.Shared.Events)
+
+-- Boba Drop is mouse/touch + keyboard hotkeys, no gamepad-style UI navigation
+-- between Selectable elements. Roblox enables that nav by default, which lets
+-- the system topbar (chat, leaderboard buttons) and any Selectable TextButton
+-- capture arrow keys before they reach InputBegan handlers below. That broke
+-- Left/Right arrow movement of the active piece while WASD still worked
+-- (WASD is not part of the gamepad nav system). Turning nav off lets every
+-- arrow press reach this script.
+GuiService.GuiNavigationEnabled = false
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
 if not Remotes then
