@@ -206,12 +206,17 @@ end
 
 local SLIDE_DURATION = 0.25
 
--- Copy adapts to MatchMode. Versus = forfeit warning, practice = run-abandon.
+-- Copy adapts to MatchMode. Versus = forfeit warning, practice = run-abandon,
+-- AI = bot-wins (no human opponent so "forfeit" reads weird, and "run" hides
+-- that there IS an opponent — just a CPU one).
 local function refreshCopy()
     local matchMode = player:GetAttribute("MatchMode")
     if matchMode == "practice" then
         title.Text = "LEAVE RUN?"
         body.Text = "Your progress this run will be lost."
+    elseif matchMode == "ai" then
+        title.Text = "LEAVE MATCH?"
+        body.Text = "The bot wins this round."
     else
         title.Text = "LEAVE MATCH?"
         body.Text = "Your opponent will win by forfeit."
@@ -277,7 +282,12 @@ local pauseRemote = remotes:WaitForChild("PauseRequest", 10)
 
 local function requestPause(paused)
     if not pauseRemote then return end
-    if player:GetAttribute("MatchMode") ~= "practice" then return end
+    -- Pause is supported in single-player modes (practice + ai). Versus
+    -- can't be paused — two real players would need to coordinate, and the
+    -- server-side gravity loop runs against both boards. Engineer's
+    -- PauseRequest handler also gates on these two modes server-side.
+    local matchMode = player:GetAttribute("MatchMode")
+    if matchMode ~= "practice" and matchMode ~= "ai" then return end
     pauseRemote:FireServer({ paused = paused })
 end
 
