@@ -346,43 +346,87 @@ local function squish(scaleObj)
     ):Play()
 end
 
--- PLAY + PRACTICE are stacked at viewport vertical center as a button
--- group: PLAY's bottom edge sits 8px above center, PRACTICE's top edge
--- sits 8px below center. 16px gap between them keeps the group readable
--- without crowding. Pill row below is bottom-anchored so neither touches
--- the play/practice pair regardless of viewport height.
-local playBtn = Instance.new("TextButton")
-playBtn.Name = "PlayBtn"
-playBtn.Size = UDim2.fromOffset(260, 88)
-playBtn.Position = UDim2.new(0.5, 0, 0.5, -8)
-playBtn.AnchorPoint = Vector2.new(0.5, 1)
-playBtn.AutoButtonColor = false
-playBtn.BorderSizePixel = 0
-playBtn.BackgroundColor3 = UIConstants.Colors.Mint
-playBtn.TextColor3 = UIConstants.Colors.TextDark
-playBtn.FontFace = UIConstants.Fonts.Display
-playBtn.TextSize = 40
-playBtn.Text = "PLAY"
-playBtn.ZIndex = 10
-playBtn.Parent = screenGui
+-- Three play buttons (PLAY versus / PRACTICE solo / SINGLE PLAYER vs AI)
+-- are vertically stacked at viewport center as a button group. A wrapper
+-- Frame + UIListLayout owns positioning so we don't juggle absolute
+-- Position offsets when buttons are added or sizes change. PLAY is the
+-- visually loudest as the primary multiplayer CTA; PRACTICE and SINGLE
+-- PLAYER are equal-weight secondary alternatives below.
+local playGroup = Instance.new("Frame")
+playGroup.Name = "PlayGroup"
+playGroup.Size = UDim2.fromOffset(260, 232)
+playGroup.Position = UDim2.fromScale(0.5, 0.5)
+playGroup.AnchorPoint = Vector2.new(0.5, 0.5)
+playGroup.BackgroundTransparency = 1
+playGroup.ZIndex = 10
+playGroup.Parent = screenGui
 
-local playCorner = Instance.new("UICorner")
-playCorner.CornerRadius = UIConstants.Corners.Button
-playCorner.Parent = playBtn
+local playGroupLayout = Instance.new("UIListLayout")
+playGroupLayout.FillDirection = Enum.FillDirection.Vertical
+playGroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+playGroupLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+playGroupLayout.SortOrder = Enum.SortOrder.LayoutOrder
+playGroupLayout.Padding = UDim.new(0, 14)
+playGroupLayout.Parent = playGroup
 
-local playStroke = Instance.new("UIStroke")
-playStroke.Color = UIConstants.Colors.StrokeWarm
-playStroke.Thickness = 2
-playStroke.Transparency = 0.35
-playStroke.Parent = playBtn
+-- Factory for the secondary CTAs so PRACTICE and SINGLE PLAYER share the
+-- same shape without copy-paste.
+local function makeModeBtn(name, label, layoutOrder, isPrimary)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = isPrimary and UDim2.fromOffset(260, 80) or UDim2.fromOffset(220, 52)
+    btn.LayoutOrder = layoutOrder
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.BackgroundColor3 = isPrimary and UIConstants.Colors.Mint or UIConstants.Colors.Cream
+    btn.TextColor3 = UIConstants.Colors.TextDark
+    btn.FontFace = UIConstants.Fonts.Display
+    btn.TextSize = isPrimary and 40 or 22
+    btn.Text = label
+    btn.ZIndex = 10
+    btn.Parent = playGroup
 
-local playScale = Instance.new("UIScale")
-playScale.Scale = 1
-playScale.Parent = playBtn
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UIConstants.Corners.Button
+    corner.Parent = btn
 
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = UIConstants.Colors.StrokeWarm
+    stroke.Thickness = isPrimary and 2 or 1.5
+    stroke.Transparency = 0.35
+    stroke.Parent = btn
+
+    local scaleObj = Instance.new("UIScale")
+    scaleObj.Scale = 1
+    scaleObj.Parent = btn
+
+    return btn, scaleObj
+end
+
+local playBtn, playScale = makeModeBtn("PlayBtn", "PLAY", 1, true)
+local practiceBtn, practiceScale = makeModeBtn("PracticeBtn", "PRACTICE", 2, false)
+local singlePlayerBtn, singlePlayerScale = makeModeBtn("SinglePlayerBtn", "SINGLE PLAYER", 3, false)
+
+-- Shared firing logic: each button latches its own bool to prevent
+-- double-fire, and any one button firing locks the rest until the
+-- GameState transition clears the latches. Avoids race where a player
+-- taps PLAY then quickly hits PRACTICE before the server transition
+-- pulls the menu away.
 local playFired = false
+local practiceFired = false
+local singlePlayerFired = false
+
+local function anyFired()
+    return playFired or practiceFired or singlePlayerFired
+end
+
+local function disableBtn(btn)
+    btn.AutoButtonColor = false
+    btn.Active = false
+end
+
 playBtn.MouseButton1Click:Connect(function()
-    if playFired then return end
+    if anyFired() then return end
     sfx("confirm")
     squish(playScale)
     if not enterQueueRemote then
@@ -390,53 +434,12 @@ playBtn.MouseButton1Click:Connect(function()
         return
     end
     playFired = true
-    -- Disable interaction immediately so a fast double-tap can't fire twice
-    -- before the server transition swaps screens. The screen as a whole goes
-    -- away when GameState flips to "matching".
-    playBtn.AutoButtonColor = false
-    playBtn.Active = false
+    disableBtn(playBtn)
     enterQueueRemote:FireServer({ mode = "versus" })
 end)
 
---------------------------------------------------------------------------------
--- PRACTICE button: secondary CTA below PLAY. Same EnterQueue remote with
--- mode = "practice" so the server can route to a solo room with no opponent
--- and no incoming garbage. Visual is smaller / quieter than PLAY so the
--- versus flow stays primary.
---------------------------------------------------------------------------------
-
-local practiceBtn = Instance.new("TextButton")
-practiceBtn.Name = "PracticeBtn"
-practiceBtn.Size = UDim2.fromOffset(220, 56)
-practiceBtn.Position = UDim2.new(0.5, 0, 0.5, 8)
-practiceBtn.AnchorPoint = Vector2.new(0.5, 0)
-practiceBtn.AutoButtonColor = false
-practiceBtn.BorderSizePixel = 0
-practiceBtn.BackgroundColor3 = UIConstants.Colors.Cream
-practiceBtn.TextColor3 = UIConstants.Colors.TextDark
-practiceBtn.FontFace = UIConstants.Fonts.Display
-practiceBtn.TextSize = 22
-practiceBtn.Text = "PRACTICE"
-practiceBtn.ZIndex = 10
-practiceBtn.Parent = screenGui
-
-local practiceCorner = Instance.new("UICorner")
-practiceCorner.CornerRadius = UIConstants.Corners.Button
-practiceCorner.Parent = practiceBtn
-
-local practiceStroke = Instance.new("UIStroke")
-practiceStroke.Color = UIConstants.Colors.StrokeWarm
-practiceStroke.Thickness = 1.5
-practiceStroke.Transparency = 0.35
-practiceStroke.Parent = practiceBtn
-
-local practiceScale = Instance.new("UIScale")
-practiceScale.Scale = 1
-practiceScale.Parent = practiceBtn
-
-local practiceFired = false
 practiceBtn.MouseButton1Click:Connect(function()
-    if practiceFired or playFired then return end
+    if anyFired() then return end
     sfx("confirm")
     squish(practiceScale)
     if not enterQueueRemote then
@@ -444,9 +447,23 @@ practiceBtn.MouseButton1Click:Connect(function()
         return
     end
     practiceFired = true
-    practiceBtn.AutoButtonColor = false
-    practiceBtn.Active = false
+    disableBtn(practiceBtn)
     enterQueueRemote:FireServer({ mode = "practice" })
+end)
+
+singlePlayerBtn.MouseButton1Click:Connect(function()
+    if anyFired() then return end
+    sfx("confirm")
+    squish(singlePlayerScale)
+    if not enterQueueRemote then
+        warn("[MainMenu] EnterQueue remote missing, SINGLE PLAYER no-op")
+        return
+    end
+    singlePlayerFired = true
+    disableBtn(singlePlayerBtn)
+    -- Easy is the only AI tier shipped for v1; the difficulty param exists
+    -- on the contract for the future medium/hard/pro tiers.
+    enterQueueRemote:FireServer({ mode = "ai", difficulty = "easy" })
 end)
 
 -- Reset on returning to the menu (match end -> main_menu). The ScreenGui
@@ -456,9 +473,11 @@ player:GetAttributeChangedSignal("GameState"):Connect(function()
     local state = player:GetAttribute("GameState")
     if state == "main_menu" then
         playFired = false
-        playBtn.Active = true
         practiceFired = false
+        singlePlayerFired = false
+        playBtn.Active = true
         practiceBtn.Active = true
+        singlePlayerBtn.Active = true
     end
 end)
 

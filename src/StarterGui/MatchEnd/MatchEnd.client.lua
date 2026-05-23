@@ -471,8 +471,11 @@ matchEndRemote.OnClientEvent:Connect(function(event)
 
     -- Practice runs have no opponent. The server tags the payload with
     -- mode = "practice" so the header / score / chain rows / button copy
-    -- collapse to single-player variants.
+    -- collapse to single-player variants. AI runs share win/lose semantics
+    -- with versus but use a "vs AI" subtitle to make the bot opponent
+    -- explicit on the result panel.
     local isPractice = (event.mode == "practice")
+    local isAI = (event.mode == "ai")
 
     -- Result classification.
     local result
@@ -498,8 +501,13 @@ matchEndRemote.OnClientEvent:Connect(function(event)
     -- Practice runs always end on the player's own overflow so the subtitle
     -- would just say "your cup overflowed", which the GAME OVER header
     -- already implies. Skip the row in practice mode.
+    -- AI runs always show a "vs AI" subtitle so the opponent identity is
+    -- clear (the locked-pearl board on the right is otherwise indistinguishable
+    -- from a versus opponent).
     local subtitleText = nil
-    if not isPractice and lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
+    if isAI then
+        subtitleText = "vs AI (easy)"
+    elseif not isPractice and lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
         local roundWinnerLocal = (lastRoundEnd.winner == localId)
             or (lastRoundEnd.winner == nil and winnerId == localId)
         subtitleText = friendlyReason(lastRoundEnd.reason, roundWinnerLocal)
