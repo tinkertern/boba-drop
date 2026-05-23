@@ -92,10 +92,18 @@ local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Position = UDim2.fromScale(0.5, 1.2) -- starts off-screen below
-panel.Size = UDim2.fromOffset(360, 200)
+-- Scale-with-clamp so the modal never bleeds off a small landscape-mobile
+-- viewport. Min 300x180 keeps STAY / LEAVE side-by-side readable; max
+-- 380x220 keeps the panel proportioned on desktop.
+panel.Size = UDim2.new(0.9, 0, 0.6, 0)
 panel.BackgroundColor3 = UIConstants.Colors.Cream
 panel.BorderSizePixel = 0
 panel.Parent = scrim
+
+local panelSizeConstraint = Instance.new("UISizeConstraint")
+panelSizeConstraint.MinSize = Vector2.new(300, 180)
+panelSizeConstraint.MaxSize = Vector2.new(380, 220)
+panelSizeConstraint.Parent = panel
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UIConstants.Corners.Panel
@@ -146,9 +154,10 @@ body.Parent = panel
 local function makeModalButton(name, text, bgColor, textColor, anchorRight)
     local btn = Instance.new("TextButton")
     btn.Name = name
-    -- Buttons share the panel's inner width (320px after 20px padding both
-    -- sides). Each is (320 - 12 gap) / 2 = 154px wide.
-    btn.Size = UDim2.fromOffset(154, 52)
+    -- Scale X so STAY + LEAVE fit when the panel shrinks to 300 min on
+    -- landscape mobile. 0.48 each + 0.04 implicit gap (left/right anchors
+    -- meeting in the middle) keeps them side-by-side without overlap.
+    btn.Size = UDim2.new(0.48, 0, 0, 52)
     if anchorRight then
         btn.AnchorPoint = Vector2.new(1, 1)
         btn.Position = UDim2.new(1, 0, 1, 0)

@@ -52,13 +52,22 @@ local PANEL_OFFSCREEN = UDim2.new(0.5, 0, 0.55, 0)
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.Active = true
-panel.Size = UDim2.fromOffset(440, 460)
+-- Scale-based with min/max clamps so the 4-tier card stack fits inside a
+-- landscape-mobile viewport (e.g. 844x390) without bleeding off the bottom.
+-- MinSize keeps it readable on tiny viewports; MaxSize caps it at the prior
+-- 440x460 ceiling for desktop / tablet.
+panel.Size = UDim2.new(0.92, 0, 0.92, 0)
 panel.Position = PANEL_OFFSCREEN
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.BackgroundColor3 = UIConstants.Colors.Cream
 panel.BorderSizePixel = 0
 panel.Visible = false
 panel.Parent = gui
+
+local panelSizeConstraint = Instance.new("UISizeConstraint")
+panelSizeConstraint.MinSize = Vector2.new(320, 320)
+panelSizeConstraint.MaxSize = Vector2.new(440, 460)
+panelSizeConstraint.Parent = panel
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UIConstants.Corners.Panel
@@ -70,11 +79,13 @@ panelStroke.Thickness = 2
 panelStroke.Transparency = 0.4
 panelStroke.Parent = panel
 
+-- Padding tightened from 24 to 16 vertical so the 4 cards + title fit when
+-- the panel shrinks to its 320 min height on landscape mobile.
 local panelPadding = Instance.new("UIPadding")
-panelPadding.PaddingTop = UDim.new(0, 24)
-panelPadding.PaddingBottom = UDim.new(0, 24)
-panelPadding.PaddingLeft = UDim.new(0, 24)
-panelPadding.PaddingRight = UDim.new(0, 24)
+panelPadding.PaddingTop = UDim.new(0, 16)
+panelPadding.PaddingBottom = UDim.new(0, 16)
+panelPadding.PaddingLeft = UDim.new(0, 20)
+panelPadding.PaddingRight = UDim.new(0, 20)
 panelPadding.Parent = panel
 
 --------------------------------------------------------------------------------
@@ -83,11 +94,11 @@ panelPadding.Parent = panel
 
 local title = Instance.new("TextLabel")
 title.Name = "Title"
-title.Size = UDim2.new(1, 0, 0, 36)
+title.Size = UDim2.new(1, 0, 0, 30)
 title.Position = UDim2.fromOffset(0, 0)
 title.BackgroundTransparency = 1
 title.FontFace = UIConstants.Fonts.Display
-title.TextSize = 28
+title.TextSize = 26
 title.TextColor3 = UIConstants.Colors.TextDark
 title.TextXAlignment = Enum.TextXAlignment.Center
 title.Text = "CHOOSE OPPONENT"
@@ -131,10 +142,15 @@ end
 -- text, and a "Coming Soon" tag.
 --------------------------------------------------------------------------------
 
+-- CardWrap fills the panel below the title (30 title + 14 gap = 44 px). Cards
+-- use Scale Y so 4 stacked tiers always fit regardless of viewport height —
+-- on landscape mobile (panel ~320 tall) cards land at ~53 px, on desktop
+-- (panel 460 tall) cards land at ~88 px. Without the Scale Y the 64-fixed
+-- cards overflowed off the bottom of a compact panel.
 local cardWrap = Instance.new("Frame")
 cardWrap.Name = "CardWrap"
-cardWrap.Size = UDim2.new(1, 0, 1, -56)
-cardWrap.Position = UDim2.fromOffset(0, 56)
+cardWrap.Size = UDim2.new(1, 0, 1, -44)
+cardWrap.Position = UDim2.fromOffset(0, 44)
 cardWrap.BackgroundTransparency = 1
 cardWrap.Parent = panel
 
@@ -143,7 +159,7 @@ cardLayout.FillDirection = Enum.FillDirection.Vertical
 cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 cardLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-cardLayout.Padding = UDim.new(0, 10)
+cardLayout.Padding = UDim.new(0, 8)
 cardLayout.Parent = cardWrap
 
 local TIERS = {
@@ -188,7 +204,10 @@ end
 local function buildCard(tier, layoutOrder)
     local card = Instance.new("TextButton")
     card.Name = tier.name .. "Card"
-    card.Size = UDim2.new(1, -8, 0, 64)
+    -- Y Scale: 4 cards + 3*8 padding gaps = 24 px → each card claims
+    -- (cardWrap_h - 24) / 4. Using 0.25 scale Y minus 6 offset gives
+    -- 0.25*h - 6 each → total = 4*(0.25h - 6) + 24 = h. Fits exactly.
+    card.Size = UDim2.new(1, -8, 0.25, -6)
     card.LayoutOrder = layoutOrder
     card.AutoButtonColor = false
     card.BorderSizePixel = 0

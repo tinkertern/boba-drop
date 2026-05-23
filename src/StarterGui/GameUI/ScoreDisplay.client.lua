@@ -18,12 +18,16 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ScoreDisplay"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = UIConstants.ZOrder.ChainCounter - 1
+-- IgnoreGuiInset so we own the full screen — landscape mobile only has ~390
+-- vertical px to spend and the 36px topbar inset was pushing SCORE down into
+-- the playable area.
+screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.fromOffset(176, 64)
-panel.Position = UDim2.fromOffset(20, 20)
+panel.Size = UDim2.fromOffset(168, 60)
+panel.Position = UDim2.fromOffset(16, 12)
 panel.BackgroundColor3 = UIConstants.Colors.Cream
 panel.BackgroundTransparency = 0
 panel.BorderSizePixel = 0
@@ -41,8 +45,8 @@ panelStroke.Parent = panel
 
 local labelTitle = Instance.new("TextLabel")
 labelTitle.Name = "Title"
-labelTitle.Size = UDim2.new(1, -20, 0, 18)
-labelTitle.Position = UDim2.fromOffset(12, 6)
+labelTitle.Size = UDim2.new(1, -20, 0, 16)
+labelTitle.Position = UDim2.fromOffset(12, 5)
 labelTitle.BackgroundTransparency = 1
 labelTitle.FontFace = UIConstants.Fonts.HUD
 labelTitle.TextSize = UIConstants.TextSizes.HUDLabel
@@ -53,8 +57,8 @@ labelTitle.Parent = panel
 
 local labelValue = Instance.new("TextLabel")
 labelValue.Name = "Value"
-labelValue.Size = UDim2.new(1, -20, 0, 34)
-labelValue.Position = UDim2.fromOffset(12, 24)
+labelValue.Size = UDim2.new(1, -20, 0, 32)
+labelValue.Position = UDim2.fromOffset(12, 22)
 labelValue.BackgroundTransparency = 1
 labelValue.FontFace = UIConstants.Fonts.Display
 labelValue.TextSize = UIConstants.TextSizes.Score

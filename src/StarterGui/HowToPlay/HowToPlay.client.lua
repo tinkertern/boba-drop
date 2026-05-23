@@ -77,6 +77,7 @@ panel.BorderSizePixel = 0
 panel.Parent = scrim
 
 local panelSizeConstraint = Instance.new("UISizeConstraint")
+panelSizeConstraint.MinSize = Vector2.new(320, 280)
 panelSizeConstraint.MaxSize = Vector2.new(520, 600)
 panelSizeConstraint.Parent = panel
 

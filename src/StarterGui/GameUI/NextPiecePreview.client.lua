@@ -41,25 +41,25 @@ end
 -- ScreenGui scaffolding
 --------------------------------------------------------------------------------
 
--- Layout sits flush below the score pill: score is at (20, 20) size (176, 64),
--- so NEXT lives at (20, 100) with width matching the score (176) and height
--- big enough for a header + two side-by-side mini cards. Mounts off-screen-left.
--- 16px gap below score gives breathing room and matches the look of the gap
--- between Lobby's tutorial card and its CTA.
-local CONTAINER_SIZE = UDim2.fromOffset(176, 96)
-local ONSCREEN_POS = UDim2.new(0, 20, 0, 100)
-local OFFSCREEN_POS = UDim2.new(0, -200, 0, 100)
-local SLOT_SIZE = UDim2.fromOffset(56, 68)
-local PEARL_SIZE = UDim2.fromOffset(24, 24)
+-- Layout sits flush below the score pill: score is now at (16, 12) size
+-- (168, 60), so NEXT lives at (16, 80) with matching width and height for
+-- a header + two side-by-side mini cards. Mounts off-screen-left.
+-- ScoreDisplay was bumped to IgnoreGuiInset=true (gains the 36px topbar
+-- back) so we match here — both panels share the same coord space and
+-- gain headroom on landscape mobile.
+local CONTAINER_SIZE = UDim2.fromOffset(168, 88)
+local ONSCREEN_POS = UDim2.new(0, 16, 0, 80)
+local OFFSCREEN_POS = UDim2.new(0, -200, 0, 80)
+local SLOT_SIZE = UDim2.fromOffset(54, 62)
+local PEARL_SIZE = UDim2.fromOffset(22, 22)
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "NextPiecePreview"
 screenGui.ResetOnSpawn = false
--- IgnoreGuiInset = false so this layer uses the same offset origin as the
--- score pill (ScoreDisplay defaults to false). Mismatched inset was making
--- NEXT visually overlap SCORE in Studio playtests even though their Y
--- positions had a gap.
-screenGui.IgnoreGuiInset = false
+-- IgnoreGuiInset = true to match ScoreDisplay. Both panels share the full-
+-- screen coord origin now; the 8 px gap below the score pill is just the
+-- offset arithmetic (12 + 60 + 8 = 80, matching ONSCREEN_POS).
+screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = UIConstants.ZOrder.HUD or 100
 screenGui.Enabled = false
 screenGui.Parent = playerGui

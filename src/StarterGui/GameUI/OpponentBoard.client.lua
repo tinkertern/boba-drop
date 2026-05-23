@@ -104,7 +104,10 @@ screenGui.Parent = playerGui
 local label = Instance.new("TextLabel")
 label.Name = "OpponentLabel"
 label.AnchorPoint = Vector2.new(0.5, 1)
-label.Position = UDim2.fromScale(0.78, 0.165)
+-- Pulled up to follow the OpponentBoardFrame shift (center 0.5 → 0.42,
+-- height 0.65 → 0.55). New cup top edge is at Scale Y 0.145 (= 0.42 -
+-- 0.275); the label sits ~0.04 above that.
+label.Position = UDim2.fromScale(0.78, 0.105)
 label.Size = UDim2.fromOffset(120, 18)
 label.BackgroundTransparency = 1
 label.FontFace = UIConstants.Fonts.HUD
@@ -120,8 +123,12 @@ label.Parent = screenGui
 local container = Instance.new("Frame")
 container.Name = "OpponentBoardFrame"
 container.AnchorPoint = Vector2.new(0.5, 0.5)
-container.Position = UDim2.fromScale(0.78, 0.5)
-container.Size = UDim2.fromScale(0.18, 0.65)
+-- Center Y pulled from 0.5 to 0.42 and height from 0.65 to 0.55 so the
+-- bottom edge (now Scale Y 0.695) sits above the bottom touch-control
+-- strip (which lives at ~Scale Y 0.7 on landscape mobile). Previously
+-- the lower third of the cup overlapped the soft / rot / hard buttons.
+container.Position = UDim2.fromScale(0.78, 0.42)
+container.Size = UDim2.fromScale(0.18, 0.55)
 container.BackgroundColor3 = UIConstants.Colors.Cream
 container.BackgroundTransparency = 0
 container.BorderSizePixel = 0
