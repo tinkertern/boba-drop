@@ -29,7 +29,9 @@ end
 local screen = Instance.new("ScreenGui")
 screen.Name = "HowToPlay"
 screen.ResetOnSpawn = false
-screen.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the modal centers inside the safe area
+-- (below the Roblox topbar) on mobile instead of bleeding into it.
+screen.IgnoreGuiInset = false
 -- Sit above BlockedFlash, but below PauseConfirm (200). 130 keeps it
 -- above HUD layers while letting the LEAVE-confirm modal cover us if
 -- both happened to be visible at the same time.

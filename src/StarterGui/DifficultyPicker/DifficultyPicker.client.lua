@@ -33,7 +33,11 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "DifficultyPicker"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = UIConstants.ZOrder and (UIConstants.ZOrder.ShopOverlay or 50) + 2 or 52
-gui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the scrim + panel sit inside the safe area
+-- (below the Roblox topbar) on mobile. Previously IgnoreGuiInset=true
+-- put the panel top at viewport_y=0, which the topbar (~36 px tall)
+-- then obscured — clipping the "CHOOSE OPPONENT" title.
+gui.IgnoreGuiInset = false
 gui.Parent = playerGui
 
 local scrim = Instance.new("Frame")

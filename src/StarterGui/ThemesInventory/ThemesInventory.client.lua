@@ -54,7 +54,9 @@ gui.ResetOnSpawn = false
 -- and settings if any overlap occurs. In practice the inventory is the
 -- only modal that opens from the THEMES pill.
 gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay + 2
-gui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the modal centers inside the safe area
+-- (below the Roblox topbar) on mobile.
+gui.IgnoreGuiInset = false
 gui.Parent = playerGui
 
 -- Scrim and modal both Active=true so clicks don't pass through to MainMenu

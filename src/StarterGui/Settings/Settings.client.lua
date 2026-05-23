@@ -81,7 +81,9 @@ gui.ResetOnSpawn = false
 -- One above ShopOverlay so Settings can sit on top of an open Shop if both
 -- ever overlap. In practice they're mutually exclusive in lobby flow.
 gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay + 1
-gui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the modal centers inside the safe area
+-- (below the Roblox topbar) on mobile.
+gui.IgnoreGuiInset = false
 gui.Parent = playerGui
 
 -- Scrim and modal both Active=true so clicks don't pass through to MainMenu

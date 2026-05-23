@@ -29,7 +29,10 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "Shop"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = UIConstants.ZOrder.ShopOverlay
-gui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the modal centers inside the safe area
+-- (below the Roblox topbar) instead of bleeding the title up under it
+-- on landscape mobile.
+gui.IgnoreGuiInset = false
 gui.Parent = playerGui
 
 -- Scrim behind the modal so the lobby/match-end UI dims when the shop is
@@ -64,7 +67,7 @@ modal.Visible = false
 modal.Parent = gui
 
 local modalSizeConstraint = Instance.new("UISizeConstraint")
-modalSizeConstraint.MinSize = Vector2.new(300, 300)
+modalSizeConstraint.MinSize = Vector2.new(300, 304)
 modalSizeConstraint.MaxSize = Vector2.new(420, 460)
 modalSizeConstraint.Parent = modal
 
@@ -79,15 +82,27 @@ modalStroke.Transparency = 0.4
 modalStroke.Parent = modal
 
 local modalPadding = Instance.new("UIPadding")
-modalPadding.PaddingTop = UDim.new(0, 24)
-modalPadding.PaddingBottom = UDim.new(0, 24)
-modalPadding.PaddingLeft = UDim.new(0, 24)
-modalPadding.PaddingRight = UDim.new(0, 24)
+modalPadding.PaddingTop = UDim.new(0, 20)
+modalPadding.PaddingBottom = UDim.new(0, 20)
+modalPadding.PaddingLeft = UDim.new(0, 20)
+modalPadding.PaddingRight = UDim.new(0, 20)
 modalPadding.Parent = modal
+
+-- Top-down UIListLayout so children flow naturally (title → body →
+-- preview swatches → buttons) without fixed offsets that collide when
+-- the modal hits its min height. Padding 10 between sections.
+local modalLayout = Instance.new("UIListLayout")
+modalLayout.FillDirection = Enum.FillDirection.Vertical
+modalLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+modalLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+modalLayout.SortOrder = Enum.SortOrder.LayoutOrder
+modalLayout.Padding = UDim.new(0, 10)
+modalLayout.Parent = modal
 
 local title = Instance.new("TextLabel")
 title.Name = "Title"
-title.Size = UDim2.new(1, 0, 0, 40)
+title.LayoutOrder = 1
+title.Size = UDim2.new(1, 0, 0, 36)
 title.BackgroundTransparency = 1
 title.FontFace = UIConstants.Fonts.Display
 title.TextSize = UIConstants.TextSizes.Score
@@ -108,8 +123,8 @@ titleStroke.Parent = title
 -- "Gameplay-neutral" softened to TextSoft so the theme names lead the eye.
 local body = Instance.new("TextLabel")
 body.Name = "Body"
-body.Size = UDim2.new(1, 0, 0, 100)
-body.Position = UDim2.fromOffset(0, 52)
+body.LayoutOrder = 2
+body.Size = UDim2.new(1, 0, 0, 64)
 body.BackgroundTransparency = 1
 body.FontFace = UIConstants.Fonts.Tutorial
 body.TextSize = UIConstants.TextSizes.Body
@@ -131,14 +146,14 @@ body.Parent = modal
 -- the cell.
 local previewRow = Instance.new("Frame")
 previewRow.Name = "PreviewRow"
-previewRow.Size = UDim2.new(1, 0, 0, 104)
-previewRow.Position = UDim2.fromOffset(0, 160)
+previewRow.LayoutOrder = 3
+previewRow.Size = UDim2.new(1, 0, 0, 96)
 previewRow.BackgroundTransparency = 1
 previewRow.Parent = modal
 
 local previewLayout = Instance.new("UIListLayout")
 previewLayout.FillDirection = Enum.FillDirection.Horizontal
-previewLayout.Padding = UDim.new(0, 14)
+previewLayout.Padding = UDim.new(0, 8)
 previewLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 previewLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 previewLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -147,7 +162,7 @@ previewLayout.Parent = previewRow
 local function previewSwatch(theme, order)
     local cell = Instance.new("Frame")
     cell.Name = theme.name
-    cell.Size = UDim2.fromOffset(110, 104)
+    cell.Size = UDim2.new(1/3, -8, 1, 0)
     cell.BackgroundColor3 = theme.CupTint
     cell.BorderSizePixel = 0
     cell.LayoutOrder = order
@@ -238,15 +253,31 @@ previewSwatch(Themes.BrownSugarBoba, 1)
 previewSwatch(Themes.StrawberryMilk, 2)
 previewSwatch(Themes.Matcha, 3)
 
--- Buy + close buttons.
+-- Buy + close buttons live inside a buttonRow Frame so they flow with the
+-- modal's UIListLayout (sits beneath the preview swatches). Each button
+-- uses Scale X (48%) so they fit on landscape mobile without overlapping
+-- the cards above.
+local buttonRow = Instance.new("Frame")
+buttonRow.Name = "ButtonRow"
+buttonRow.LayoutOrder = 4
+buttonRow.Size = UDim2.new(1, 0, 0, 52)
+buttonRow.BackgroundTransparency = 1
+buttonRow.Parent = modal
+
 -- The Buy button uses Coral (the chain-gradient end color) as a primary
 -- accent so it does not blend with the Brown Sugar swatch's peach
 -- background in the preview row. Cream text + warm stroke for contrast.
 local function makeBtn(name, text, opts)
     local btn = Instance.new("TextButton")
     btn.Name = name
-    btn.Size = UDim2.fromOffset(170, 52)
-    btn.Position = UDim2.new(opts.anchorX, opts.anchorX == 0 and 0 or -170, 1, -52)
+    btn.Size = UDim2.new(0.48, 0, 1, 0)
+    if opts.anchorX == 0 then
+        btn.AnchorPoint = Vector2.new(0, 0)
+        btn.Position = UDim2.new(0, 0, 0, 0)
+    else
+        btn.AnchorPoint = Vector2.new(1, 0)
+        btn.Position = UDim2.new(1, 0, 0, 0)
+    end
     btn.AutoButtonColor = false
     btn.BorderSizePixel = 0
     btn.BackgroundColor3 = opts.bg
@@ -254,7 +285,7 @@ local function makeBtn(name, text, opts)
     btn.FontFace = UIConstants.Fonts.Display
     btn.TextSize = UIConstants.TextSizes.Body
     btn.Text = text
-    btn.Parent = modal
+    btn.Parent = buttonRow
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UIConstants.Corners.Button

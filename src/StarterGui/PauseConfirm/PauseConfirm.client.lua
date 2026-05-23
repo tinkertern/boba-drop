@@ -29,7 +29,10 @@ end
 local screen = Instance.new("ScreenGui")
 screen.Name = "PauseConfirm"
 screen.ResetOnSpawn = false
-screen.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the leave-confirm modal centers inside the
+-- safe area (below the Roblox topbar) on mobile. The LEAVE corner pill
+-- now lives below the topbar too, so it can't be hidden behind it.
+screen.IgnoreGuiInset = false
 -- Above MatchEnd (RoundBanner=80) and any HUD layer. UIConstants.ZOrder has no
 -- Modal entry yet, so pick something higher than the highest existing layer
 -- (BlockedFlash = 110) without editing UIConstants.
