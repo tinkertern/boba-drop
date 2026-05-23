@@ -52,7 +52,9 @@ scrim.Parent = gui
 local modal = Instance.new("Frame")
 modal.Name = "Modal"
 modal.Active = true
-modal.Size = UDim2.fromOffset(420, 460)
+-- Viewport-adaptive sizing so the "Buy for 99 R$" button at the bottom
+-- doesn't clip off landscape phones. 92% × 85% with mobile/desktop clamp.
+modal.Size = UDim2.new(0.92, 0, 0.85, 0)
 modal.Position = UDim2.fromScale(0.5, 0.5)
 modal.AnchorPoint = Vector2.new(0.5, 0.5)
 modal.BackgroundColor3 = UIConstants.Colors.Cream
@@ -60,6 +62,11 @@ modal.BackgroundTransparency = 0
 modal.BorderSizePixel = 0
 modal.Visible = false
 modal.Parent = gui
+
+local modalSizeConstraint = Instance.new("UISizeConstraint")
+modalSizeConstraint.MinSize = Vector2.new(300, 300)
+modalSizeConstraint.MaxSize = Vector2.new(420, 460)
+modalSizeConstraint.Parent = modal
 
 local modalCorner = Instance.new("UICorner")
 modalCorner.CornerRadius = UIConstants.Corners.Panel

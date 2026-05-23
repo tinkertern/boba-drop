@@ -614,6 +614,68 @@ makePill("HowToBtn", "?", 28, 4, function()
 end)
 
 --------------------------------------------------------------------------------
+-- Compact mode for mobile landscape. Viewport height < 500 (typical landscape
+-- phone: 750×414) triggers a compressed layout: greeting hidden (it overlapped
+-- the title at narrow widths), title container + max font shrunk, button
+-- group buttons shrunk so the stack clears the pill row, padding tightened.
+-- Hooked to Camera.ViewportSize so rotation / window resize re-applies.
+--------------------------------------------------------------------------------
+
+local COMPACT_THRESHOLD_Y = 500
+
+local function applyCompactMode(isCompact)
+    if isCompact then
+        greetingFrame.Visible = false
+        titleContainer.Size = UDim2.fromOffset(380, 60)
+        titleSizeConstraint.MaxTextSize = 44
+        shadowSizeConstraint.MaxTextSize = 44
+        playBtn.Size = UDim2.fromOffset(200, 56)
+        playBtn.TextSize = 30
+        practiceBtn.Size = UDim2.fromOffset(180, 40)
+        practiceBtn.TextSize = 18
+        singlePlayerBtn.Size = UDim2.fromOffset(180, 40)
+        singlePlayerBtn.TextSize = 18
+        heroLayout.Padding = UDim.new(0, 12)
+        playGroupLayout.Padding = UDim.new(0, 8)
+        playGroup.Size = UDim2.fromOffset(200, 160)
+        heroStack.Position = UDim2.new(0.5, 0, 0, 16)
+    else
+        greetingFrame.Visible = true
+        titleContainer.Size = UDim2.fromOffset(520, 92)
+        titleSizeConstraint.MaxTextSize = UIConstants.TextSizes.DisplayLarge
+        shadowSizeConstraint.MaxTextSize = UIConstants.TextSizes.DisplayLarge
+        playBtn.Size = UDim2.fromOffset(260, 80)
+        playBtn.TextSize = 40
+        practiceBtn.Size = UDim2.fromOffset(220, 52)
+        practiceBtn.TextSize = 22
+        singlePlayerBtn.Size = UDim2.fromOffset(220, 52)
+        singlePlayerBtn.TextSize = 22
+        heroLayout.Padding = UDim.new(0, 24)
+        playGroupLayout.Padding = UDim.new(0, 14)
+        playGroup.Size = UDim2.fromOffset(260, 232)
+        heroStack.Position = UDim2.new(0.5, 0, 0, 40)
+    end
+end
+
+local camera = workspace.CurrentCamera
+local function recomputeCompact()
+    if not camera then return end
+    applyCompactMode(camera.ViewportSize.Y < COMPACT_THRESHOLD_Y)
+end
+
+if camera then
+    camera:GetPropertyChangedSignal("ViewportSize"):Connect(recomputeCompact)
+end
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    camera = workspace.CurrentCamera
+    if camera then
+        camera:GetPropertyChangedSignal("ViewportSize"):Connect(recomputeCompact)
+    end
+    recomputeCompact()
+end)
+recomputeCompact()
+
+--------------------------------------------------------------------------------
 -- Cleanup: stop the pulse when the ScreenGui is destroyed (rare, but the
 -- chained tweens otherwise leak). RunService isn't used here so there's
 -- nothing else to disconnect.
