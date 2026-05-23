@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <!-- Solid-fill version. ImageMagick MSVG drops gradients to black. -->
+
+  <rect width="1920" height="1080" fill="#F0C58E"/>
+  <!-- Background atmosphere -->
+  <circle cx="100" cy="120" r="180" fill="#FFE9CC" opacity="0.45"/>
+  <circle cx="1820" cy="120" r="160" fill="#FFE9CC" opacity="0.40"/>
+  <circle cx="100" cy="960" r="200" fill="#FFE9CC" opacity="0.35"/>
+  <circle cx="1820" cy="960" r="200" fill="#FFE9CC" opacity="0.35"/>
+
+  <!-- Ambient drift pearls in background -->
+  <circle cx="180" cy="220" r="32" fill="#D8B89A" opacity="0.40"/>
+  <circle cx="1740" cy="180" r="36" fill="#E9C7AB" opacity="0.40"/>
+  <circle cx="120" cy="780" r="38" fill="#D8B89A" opacity="0.38"/>
+  <circle cx="1780" cy="850" r="30" fill="#E9C7AB" opacity="0.35"/>
+  <circle cx="960" cy="160" r="22" fill="#D8B89A" opacity="0.40"/>
+
+  <!-- LEFT CUP (player) -->
+  <g transform="translate(80, 200)">
+    <ellipse cx="370" cy="780" rx="240" ry="26" fill="#5C3A21" opacity="0.22"/>
+    <path d="M 150 30
+             L 184 740
+             Q 188 770 220 770
+             L 520 770
+             Q 552 770 556 740
+             L 590 30
+             Z"
+          fill="#FFF6E4"
+          stroke="#5C3A21"
+          stroke-width="14"
+          stroke-linejoin="round"/>
+    <line x1="158" y1="50" x2="582" y2="50" stroke="#5C3A21" stroke-width="4" stroke-linecap="round" opacity="0.28"/>
+    <!-- Pearls stacked -->
+    <g id="leftPearls">
+      <circle cx="240" cy="700" r="42" fill="#8E5E36"/>
+      <circle cx="328" cy="700" r="42" fill="#A8D4A0"/>
+      <circle cx="416" cy="700" r="42" fill="#F0AAAA"/>
+      <circle cx="504" cy="700" r="42" fill="#8E5E36"/>
+      <circle cx="240" cy="610" r="42" fill="#F0AAAA"/>
+      <circle cx="328" cy="610" r="42" fill="#FDF6EA"/>
+      <circle cx="416" cy="610" r="42" fill="#8E5E36"/>
+      <circle cx="504" cy="610" r="42" fill="#A8D4A0"/>
+      <!-- Highlighted chain (4 pinks mid-pop) -->
+      <circle cx="240" cy="520" r="42" fill="#F0AAAA" stroke="#D85A47" stroke-width="6"/>
+      <circle cx="328" cy="520" r="42" fill="#F0AAAA" stroke="#D85A47" stroke-width="6"/>
+      <circle cx="416" cy="520" r="42" fill="#F0AAAA" stroke="#D85A47" stroke-width="6"/>
+      <circle cx="504" cy="520" r="42" fill="#F0AAAA" stroke="#D85A47" stroke-width="6"/>
+      <!-- Glossy highlights on each pearl -->
+      <circle cx="228" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="228" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="228" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <!-- Pop burst lines around chain -->
+      <line x1="200" y1="480" x2="170" y2="450" stroke="#D85A47" stroke-width="10" stroke-linecap="round"/>
+      <line x1="544" y1="480" x2="574" y2="450" stroke="#D85A47" stroke-width="10" stroke-linecap="round"/>
+      <line x1="372" y1="460" x2="372" y2="420" stroke="#D85A47" stroke-width="10" stroke-linecap="round"/>
+      <line x1="180" y1="520" x2="148" y2="528" stroke="#D85A47" stroke-width="10" stroke-linecap="round"/>
+      <line x1="564" y1="520" x2="596" y2="528" stroke="#D85A47" stroke-width="10" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- RIGHT CUP (opponent) -->
+  <g transform="translate(1170, 200)">
+    <ellipse cx="370" cy="780" rx="240" ry="26" fill="#5C3A21" opacity="0.22"/>
+    <path d="M 150 30
+             L 184 740
+             Q 188 770 220 770
+             L 520 770
+             Q 552 770 556 740
+             L 590 30
+             Z"
+          fill="#FFF6E4"
+          stroke="#5C3A21"
+          stroke-width="14"
+          stroke-linejoin="round"/>
+    <line x1="158" y1="50" x2="582" y2="50" stroke="#5C3A21" stroke-width="4" stroke-linecap="round" opacity="0.28"/>
+    <g id="rightPearls">
+      <circle cx="240" cy="700" r="42" fill="#8E5E36"/>
+      <circle cx="328" cy="700" r="42" fill="#F0AAAA"/>
+      <circle cx="416" cy="700" r="42" fill="#A8D4A0"/>
+      <circle cx="504" cy="700" r="42" fill="#8E5E36"/>
+      <circle cx="240" cy="610" r="42" fill="#A8D4A0"/>
+      <circle cx="328" cy="610" r="42" fill="#8E5E36"/>
+      <circle cx="416" cy="610" r="42" fill="#F0AAAA"/>
+      <circle cx="504" cy="610" r="42" fill="#FDF6EA"/>
+      <circle cx="240" cy="520" r="42" fill="#8E5E36"/>
+      <circle cx="328" cy="520" r="42" fill="#A8D4A0"/>
+      <circle cx="416" cy="520" r="42" fill="#F0AAAA"/>
+      <circle cx="504" cy="520" r="42" fill="#8E5E36"/>
+      <!-- Glossy highlights -->
+      <circle cx="228" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="690" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="228" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="600" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="228" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="316" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="404" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <circle cx="492" cy="510" r="10" fill="#FFFFFF" opacity="0.60"/>
+      <!-- Incoming ice cubes (garbage from left's chain) -->
+      <rect x="220" y="420" width="40" height="40" fill="#C9E2EE" stroke="#5C3A21" stroke-width="4" rx="6" transform="rotate(8 240 440)"/>
+      <rect x="308" y="410" width="40" height="40" fill="#C9E2EE" stroke="#5C3A21" stroke-width="4" rx="6" transform="rotate(-12 328 430)"/>
+      <rect x="396" y="416" width="40" height="40" fill="#C9E2EE" stroke="#5C3A21" stroke-width="4" rx="6" transform="rotate(15 416 436)"/>
+      <rect x="484" y="408" width="40" height="40" fill="#C9E2EE" stroke="#5C3A21" stroke-width="4" rx="6" transform="rotate(-7 504 428)"/>
+    </g>
+  </g>
+
+  <!-- Garbage arrow connecting cups (left chain → right cup) -->
+  <path d="M 740 580 Q 960 480 1180 580"
+        stroke="#5C3A21" stroke-width="12" fill="none"
+        stroke-linecap="round" stroke-dasharray="22 16"
+        opacity="0.65"/>
+  <polygon points="1180,580 1156,558 1156,602" fill="#5C3A21" opacity="0.70"/>
+
+  <!-- Tagline rectangle (text composited in post via ImageMagick) -->
+  <rect x="660" y="980" width="600" height="70" rx="20"
+        fill="#5C3A21" opacity="0.92"/>
+</svg>
