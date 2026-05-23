@@ -17,10 +17,21 @@
 --   - medium: scored placement search (prefer low/flat stacks, avoid topout,
 --             mild same-color adjacency bonus), 300-500ms reaction, ~10% of
 --             plays fall through to easy for human-feeling noise.
+--   - hard: medium scoring + 1-step chain lookahead. For each candidate
+--           placement, simulate it on a cloned board, run ChainResolver, and
+--           award a large bonus proportional to chainLength + totalPopped.
+--           Tighter 200-300ms reaction, no noise budget. ChainResolver +
+--           board-clone + placement-simulate are passed as a `deps` table
+--           (dependency injection) so the policy stays pure and Lune-testable:
+--           AiOpponent.lua lives in ServerScriptService and ChainResolver
+--           lives in ReplicatedStorage; an earlier attempt to bridge the gap
+--           with a "../../" string require was reverted as un-tested-path in
+--           the Roblox runtime. `decide()` injects the real deps via Roblox
+--           instance requires; tests inject Lune-friendly string-require deps.
 --
--- Hard / pro tiers are not implemented; they fall through to `_mediumPolicy`
--- so RoomManager's validDifficulties guard ({easy/normal/hard/pro = true})
--- doesn't reach a nil policy when those tiers ship in later patches.
+-- Pro tier is not implemented yet; it falls through to `_hardPolicy` so
+-- RoomManager's validDifficulties guard ({easy/medium/hard/pro = true})
+-- doesn't reach a nil policy.
 
 -- Board geometry inlined here. The Logic modules use string requires for sibling
 -- modules within ReplicatedStorage/Shared/Logic/, but going *across* services
@@ -41,12 +52,26 @@ AiOpponent.EASY_REACTION_MIN = 0.4
 AiOpponent.EASY_REACTION_MAX = 0.7
 AiOpponent.MEDIUM_REACTION_MIN = 0.3
 AiOpponent.MEDIUM_REACTION_MAX = 0.5
+AiOpponent.HARD_REACTION_MIN = 0.2
+AiOpponent.HARD_REACTION_MAX = 0.3
 AiOpponent.INPUT_WAIT_MIN = 0.08
 AiOpponent.INPUT_WAIT_MAX = 0.15
 
 -- Probability that medium ignores its policy and plays a random placement.
 -- Keeps the bot from feeling robotic; gives the human room to win.
 AiOpponent.MEDIUM_NOISE_RATE = 0.10
+-- Hard doesn't get a noise budget — the whole point of the tier is that it
+-- exploits chains reliably. Mistakes only come from short-horizon planning.
+AiOpponent.HARD_NOISE_RATE = 0.0
+
+-- Chain lookahead bonuses for hard tier (subtracted from score; bigger =
+-- stronger preference). The per-link bonus is sized so a single chain link
+-- swamps every medium-score delta on a normal board (heightSum across all
+-- columns at visibleHeight=12 caps at ~72 * 0.6 = 43; 50 per link comfortably
+-- dominates). The per-pop bonus is a tiebreaker among equal-chain-length
+-- options so wider clears beat narrower ones.
+AiOpponent.HARD_CHAIN_BONUS_PER_LINK = 50
+AiOpponent.HARD_POP_BONUS_PER_CELL = 5
 
 -- Score weights for medium policy. Lower = better. Exported as a table so
 -- tests can reason about / override them.
@@ -282,14 +307,162 @@ function AiOpponent._mediumPolicy(gs, playerId, rng)
     return bestCandidates[pickIndex]
 end
 
+-- Hard: medium scoring + 1-step chain lookahead -----------------------------
+--
+-- Snapshot just enough of a Board to satisfy ChainResolver + MatchDetector.
+-- Producers a fresh table exposing `cells`, `width`, `height`, `cellAt`,
+-- `clearAt`, and `gravitySettle`. Anything else on Board (RNG state, bag,
+-- placeAt) is intentionally omitted — the simulator writes cells directly
+-- into the `cells` table, mirroring how _lockPiece does it on the real board.
+--
+-- Why not just `Board.new` with a copied cells grid? Board.new requires a
+-- seed and rebuilds the bag/RNG, which is wasted work and couples the
+-- simulator to Board's constructor surface. The cloned object only needs to
+-- look like a Board from ChainResolver's perspective.
+local function cloneBoardCells(board)
+    local cloned = {
+        width = board.width,
+        height = board.height,
+        cells = {},
+    }
+    for r = 1, board.height do
+        cloned.cells[r] = {}
+        if board.cells[r] then
+            for c = 1, board.width do
+                cloned.cells[r][c] = board.cells[r][c]
+            end
+        end
+    end
+    function cloned:cellAt(row, col)
+        if row < 1 or row > self.height or col < 1 or col > self.width then return nil end
+        return self.cells[row][col]
+    end
+    function cloned:clearAt(row, col)
+        self.cells[row][col] = nil
+    end
+    function cloned:gravitySettle()
+        for col = 1, self.width do
+            local writeRow = 1
+            for row = 1, self.height do
+                local cell = self.cells[row][col]
+                if cell ~= nil then
+                    if row ~= writeRow then
+                        self.cells[writeRow][col] = cell
+                        self.cells[row][col] = nil
+                    end
+                    writeRow += 1
+                end
+            end
+        end
+    end
+    return cloned
+end
+AiOpponent._cloneBoardCells = cloneBoardCells -- exposed for tests
+
+-- Apply a piece placement to a cloned board, then settle gravity (mirrors
+-- GameState:_lockPiece's lock-and-settle step). Cells that land above the
+-- board's row range are silently dropped, matching GameState's `withinBoard`
+-- guard. Returns the cloned board (mutated in place) for chaining.
+local function simulatePlacement(clonedBoard, landing, aColor, bColor)
+    if landing.aRow >= 1 and landing.aRow <= clonedBoard.height
+        and landing.aCol >= 1 and landing.aCol <= clonedBoard.width then
+        clonedBoard.cells[landing.aRow][landing.aCol] = aColor
+    end
+    if landing.bRow >= 1 and landing.bRow <= clonedBoard.height
+        and landing.bCol >= 1 and landing.bCol <= clonedBoard.width then
+        clonedBoard.cells[landing.bRow][landing.bCol] = bColor
+    end
+    clonedBoard:gravitySettle()
+    return clonedBoard
+end
+AiOpponent._simulatePlacement = simulatePlacement -- exposed for tests
+
+-- Hard policy: enumerate candidates, score with medium scoring, simulate the
+-- placement, and subtract a large chain bonus. Highest "goodness" wins
+-- (equivalent to lowest score after the chain bonus is subtracted).
+--
+-- `deps` must contain { ChainResolver, cloneBoardCells, simulatePlacement }.
+-- The real `decide()` injects these via Roblox instance requires; tests inject
+-- via Lune string requires. The policy never touches a global ChainResolver
+-- so the ServerScriptService → ReplicatedStorage boundary stays clean.
+function AiOpponent._hardPolicy(gs, playerId, rng, deps)
+    rng = rng or math.random
+    if not deps or not deps.ChainResolver or not deps.cloneBoardCells or not deps.simulatePlacement then
+        -- Defensive: if a caller forgot to wire deps (e.g. mistakenly used the
+        -- hard policy without injection), fall back to medium so we don't
+        -- error mid-match. decide() is the only production caller and always
+        -- passes a full deps bundle.
+        return AiOpponent._mediumPolicy(gs, playerId, rng)
+    end
+
+    -- Hard has no noise budget — skip the random-fallback branch medium uses.
+    if AiOpponent.HARD_NOISE_RATE > 0 and rng() < AiOpponent.HARD_NOISE_RATE then
+        return AiOpponent._easyPolicy(gs, playerId, rng)
+    end
+
+    local board = gs:boardFor(playerId)
+    local piece = gs:activePiece(playerId)
+    if not board or not piece then
+        return AiOpponent._mediumPolicy(gs, playerId, rng)
+    end
+
+    local heights = columnHeights(board)
+    local boardWidth = Constants.BOARD_WIDTH
+
+    local bestScore = math.huge
+    local bestCandidates = {}
+
+    for col = 1, boardWidth do
+        for rotation = 0, 3 do
+            local landing = predictLanding(heights, col, rotation, boardWidth)
+            if landing then
+                local baseScore = scorePlacement(heights, landing, board, piece.a, piece.b, AiOpponent.MEDIUM_WEIGHTS)
+                local score = baseScore
+                -- Only simulate chains for non-topout placements. Topout
+                -- placements stay at +inf so we never accidentally pick a
+                -- "fatal but chains" suicide play.
+                if score ~= math.huge then
+                    local clonedBoard = deps.cloneBoardCells(board)
+                    deps.simulatePlacement(clonedBoard, landing, piece.a, piece.b)
+                    local result = deps.ChainResolver.resolve(clonedBoard)
+                    if result.chainLength > 0 then
+                        score -= AiOpponent.HARD_CHAIN_BONUS_PER_LINK * result.chainLength
+                        score -= AiOpponent.HARD_POP_BONUS_PER_CELL * result.totalPopped
+                    end
+                end
+                if score < bestScore then
+                    bestScore = score
+                    bestCandidates = { { col = col, rotation = rotation } }
+                elseif score == bestScore then
+                    table.insert(bestCandidates, { col = col, rotation = rotation })
+                end
+            end
+        end
+    end
+
+    if #bestCandidates == 0 then
+        return AiOpponent._mediumPolicy(gs, playerId, rng)
+    end
+
+    -- Random tiebreak among equal-scoring candidates.
+    local pickIndex = math.floor(rng() * #bestCandidates) + 1
+    if pickIndex > #bestCandidates then pickIndex = #bestCandidates end
+    return bestCandidates[pickIndex]
+end
+
 -- Resolve the policy function for a difficulty string. Unknown difficulties
 -- fall through to medium (callers should already have validated, but defend).
 function AiOpponent._policyFor(difficulty)
     if difficulty == "easy" then
         return AiOpponent._easyPolicy, AiOpponent.EASY_REACTION_MIN, AiOpponent.EASY_REACTION_MAX
+    elseif difficulty == "hard" then
+        return AiOpponent._hardPolicy, AiOpponent.HARD_REACTION_MIN, AiOpponent.HARD_REACTION_MAX
     else
-        -- normal/medium/hard/pro all use medium policy for now. Hard + pro are
-        -- left as TODO; promoting to medium beats falling through to easy.
+        -- normal/medium use medium; pro falls through to hard (closest tier
+        -- until the dedicated pro policy ships).
+        if difficulty == "pro" then
+            return AiOpponent._hardPolicy, AiOpponent.HARD_REACTION_MIN, AiOpponent.HARD_REACTION_MAX
+        end
         return AiOpponent._mediumPolicy, AiOpponent.MEDIUM_REACTION_MIN, AiOpponent.MEDIUM_REACTION_MAX
     end
 end
@@ -332,7 +505,21 @@ function AiOpponent.decide(gs, room, event)
     task.wait(randRange(reactionMin, reactionMax))
     if not alive() then return end
 
-    local target = policy(capturedGs, botId, math.random)
+    -- Build deps for policies that need them (hard tier). Cheap to construct;
+    -- the requires are cached after the first call. Easy/medium ignore the
+    -- 4th arg, so passing the deps unconditionally is safe.
+    local deps = nil
+    if policy == AiOpponent._hardPolicy then
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local ChainResolver = require(ReplicatedStorage.Shared.Logic.ChainResolver)
+        deps = {
+            ChainResolver = ChainResolver,
+            cloneBoardCells = AiOpponent._cloneBoardCells,
+            simulatePlacement = AiOpponent._simulatePlacement,
+        }
+    end
+
+    local target = policy(capturedGs, botId, math.random, deps)
     if not target then return end -- policy bailed; nothing safe to do
 
     -- Rotate to target orientation. CW rotation N times == orientation N.

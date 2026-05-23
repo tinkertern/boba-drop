@@ -12,7 +12,16 @@
 local t = require("./_test_helpers")
 local GameState = require("../src/ReplicatedStorage/Shared/Logic/GameState")
 local Constants = require("../src/ReplicatedStorage/Shared/Logic/Constants")
+local ChainResolver = require("../src/ReplicatedStorage/Shared/Logic/ChainResolver")
 local AiOpponent = require("../src/ServerScriptService/Networking/AiOpponent")
+
+-- Hard policy needs an injected deps table. Build it once and pass to every
+-- _hardPolicy call below — mirrors what decide() does at runtime.
+local HARD_DEPS = {
+    ChainResolver = ChainResolver,
+    cloneBoardCells = AiOpponent._cloneBoardCells,
+    simulatePlacement = AiOpponent._simulatePlacement,
+}
 
 local BOT = "-1"
 local REAL = "P1"
@@ -337,12 +346,195 @@ t.describe("AiOpponent._policyFor", function()
         t.assertEq(maxR, AiOpponent.MEDIUM_REACTION_MAX)
     end)
 
-    t.it("falls through to medium for hard/pro until those tiers ship", function()
-        local fn1 = AiOpponent._policyFor("hard")
-        local fn2 = AiOpponent._policyFor("pro")
-        t.assertEq(fn1, AiOpponent._mediumPolicy)
-        t.assertEq(fn2, AiOpponent._mediumPolicy)
+    t.it("returns the hard policy for 'hard'", function()
+        local fn, minR, maxR = AiOpponent._policyFor("hard")
+        t.assertEq(fn, AiOpponent._hardPolicy)
+        t.assertEq(minR, AiOpponent.HARD_REACTION_MIN)
+        t.assertEq(maxR, AiOpponent.HARD_REACTION_MAX)
     end)
+
+    t.it("falls through to hard for 'pro' until that tier ships", function()
+        -- Pro is the only remaining unimplemented tier. It promotes to hard
+        -- (closest available) rather than falling back to medium.
+        local fn = AiOpponent._policyFor("pro")
+        t.assertEq(fn, AiOpponent._hardPolicy)
+    end)
+end)
+
+-- ---- _cloneBoardCells / _simulatePlacement helpers --------------------------
+
+t.describe("AiOpponent._cloneBoardCells", function()
+    t.it("produces a board snapshot that ChainResolver can resolve", function()
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        -- Set up a board that has a known 4-cell group ready to pop.
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Pink")
+        board:placeAt(1, 3, "Pink")
+        board:placeAt(1, 4, "Pink")
+        local cloned = AiOpponent._cloneBoardCells(board)
+        t.assertEq(cloned.width, board.width)
+        t.assertEq(cloned.height, board.height)
+        t.assertEq(cloned:cellAt(1, 1), "Pink")
+        local result = ChainResolver.resolve(cloned)
+        t.assertEq(result.chainLength, 1)
+        t.assertEq(result.totalPopped, 4)
+    end)
+
+    t.it("does not mutate the source board when modified", function()
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 1, "Pink")
+        local cloned = AiOpponent._cloneBoardCells(board)
+        cloned:clearAt(1, 1)
+        t.assertEq(board:cellAt(1, 1), "Pink", "source preserved")
+        t.assertEq(cloned:cellAt(1, 1), nil, "clone mutated")
+    end)
+end)
+
+t.describe("AiOpponent._simulatePlacement", function()
+    t.it("writes both piece cells into the cloned board and settles", function()
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        local cloned = AiOpponent._cloneBoardCells(board)
+        -- Land a Pink-Pink vertical pair in col 3 at the bottom (rows 1,2).
+        AiOpponent._simulatePlacement(cloned, {
+            aRow = 1, aCol = 3,
+            bRow = 2, bCol = 3,
+        }, "Pink", "Pink")
+        t.assertEq(cloned:cellAt(1, 3), "Pink")
+        t.assertEq(cloned:cellAt(2, 3), "Pink")
+    end)
+
+    t.it("discards cells that land above the board ceiling", function()
+        -- Mirrors GameState's withinBoard guard during _lockPiece.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        local cloned = AiOpponent._cloneBoardCells(board)
+        AiOpponent._simulatePlacement(cloned, {
+            aRow = board.height + 1, aCol = 3, -- off-grid above
+            bRow = 1, bCol = 3,
+        }, "Pink", "Brown")
+        t.assertEq(cloned:cellAt(1, 3), "Brown", "in-grid cell placed")
+        -- The off-grid cell shouldn't show up anywhere on-board.
+        for r = 1, board.height do
+            t.assertEq(cloned:cellAt(r, 3) == "Pink", false,
+                "off-grid Pink leaked at row " .. r)
+        end
+    end)
+end)
+
+-- ---- _hardPolicy ------------------------------------------------------------
+
+t.describe("AiOpponent._hardPolicy", function()
+    t.it("prefers a placement that completes a chain over a flatter no-chain placement", function()
+        -- Three Pinks in a row at the bottom. Dropping a Pink-Pink piece such
+        -- that a 4th Pink lands at row 1 cols 4 (or 1-3 via the partner cell)
+        -- completes a 4-group and chains. Any other placement leaves no chain.
+        -- The bot must pick a chain-completing placement even though several
+        -- non-chain placements would leave a comparably flat stack.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Pink")
+        board:placeAt(1, 3, "Pink")
+        local piece = gs:activePiece(BOT)
+        piece.a = "Pink"
+        piece.b = "Pink"
+
+        local target = AiOpponent._hardPolicy(gs, BOT, seqRng({ 0.0 }), HARD_DEPS)
+
+        -- Verify the chosen placement actually yields a chain.
+        local heights = AiOpponent._columnHeights(board)
+        local landing = AiOpponent._predictLanding(heights, target.col, target.rotation, Constants.BOARD_WIDTH)
+        t.assertEq(landing ~= nil, true, "landing must be valid")
+        local cloned = AiOpponent._cloneBoardCells(board)
+        AiOpponent._simulatePlacement(cloned, landing, "Pink", "Pink")
+        local result = ChainResolver.resolve(cloned)
+        t.assertEq(result.chainLength >= 1, true,
+            "expected chain >= 1, got " .. result.chainLength)
+    end)
+
+    t.it("prefers a 2-link chain placement over a 1-link chain placement", function()
+        -- Mock the ChainResolver deps so we can control per-placement chain
+        -- length without engineering a real 2-link board state (constructing
+        -- real 2-link patterns from a single piece drop is fiddly and would
+        -- couple the test to specific gravity-settle quirks). The heuristic
+        -- under test is "given two chain-yielding placements, prefer the
+        -- longer one" — that's pure scoring math.
+        --
+        -- Setup: empty board. simulatePlacement tags the cloned board with
+        -- the landing column; mock ChainResolver returns chain=2 for col 1
+        -- placements, chain=1 for col 6 placements, chain=0 elsewhere.
+        local gs = newAiState()
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        local mockDeps = {
+            cloneBoardCells = AiOpponent._cloneBoardCells,
+            simulatePlacement = function(clonedBoard, landing, _aColor, _bColor)
+                clonedBoard._landingCol = landing.aCol
+                return clonedBoard
+            end,
+            ChainResolver = {
+                resolve = function(cloned)
+                    if cloned._landingCol == 1 then
+                        return { chainLength = 2, totalPopped = 8, steps = {} }
+                    elseif cloned._landingCol == 6 then
+                        return { chainLength = 1, totalPopped = 4, steps = {} }
+                    end
+                    return { chainLength = 0, totalPopped = 0, steps = {} }
+                end,
+            },
+        }
+
+        local target = AiOpponent._hardPolicy(gs, BOT, seqRng({ 0.0 }), mockDeps)
+        t.assertEq(target.col, 1,
+            "expected col 1 (chain=2), got col " .. target.col)
+    end)
+
+    t.it("falls back to medium scoring when no placement chains", function()
+        -- Same uneven-board setup as the medium "picks lowest-stack column"
+        -- test. With no chain opportunities, hard should behave like medium
+        -- (without the noise budget) — i.e. avoid the tall column.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        for r = 1, 10 do
+            board:placeAt(r, 1, "Garbage")
+        end
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        -- Real deps (no chains possible — Brown-Brown into empty cols can't
+        -- form a 4-group on a Garbage-only board).
+        local target = AiOpponent._hardPolicy(gs, BOT, seqRng({ 0.0 }), HARD_DEPS)
+        t.assertEq(target.col >= 2 and target.col <= Constants.BOARD_WIDTH, true,
+            "expected col 2-6 (away from tall col 1), got col " .. target.col)
+    end)
+
+    t.it("returns col in [1, BOARD_WIDTH] and rotation in [0, 3]", function()
+        local gs = newAiState()
+        math.randomseed(11111)
+        for _ = 1, 30 do
+            local target = AiOpponent._hardPolicy(gs, BOT, math.random, HARD_DEPS)
+            t.assertEq(target.col >= 1 and target.col <= Constants.BOARD_WIDTH, true,
+                "col out of bounds: " .. target.col)
+            t.assertEq(target.rotation >= 0 and target.rotation <= 3, true,
+                "rotation out of bounds: " .. target.rotation)
+        end
+    end)
+
+    t.it("falls back to medium policy when deps are missing", function()
+        -- Defensive guard: caller forgot to inject deps. Policy must not error;
+        -- it should degrade to medium so the bot keeps playing.
+        local gs = newAiState()
+        local target = AiOpponent._hardPolicy(gs, BOT, seqRng({ 0.5, 0.0 }), nil)
+        t.assertEq(type(target.col), "number")
+        t.assertEq(type(target.rotation), "number")
+    end)
+
 end)
 
 t.summary()
