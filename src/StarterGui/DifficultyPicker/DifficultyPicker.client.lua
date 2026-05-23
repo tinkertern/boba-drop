@@ -150,7 +150,7 @@ local TIERS = {
     { key = "easy",   name = "EASY",   desc = "casual random opponent",        bg = UIConstants.Colors.Mint,       textColor = UIConstants.Colors.TextDark,    locked = false },
     { key = "medium", name = "MEDIUM", desc = "plays safer, avoids overflow",  bg = UIConstants.Colors.Peach,      textColor = UIConstants.Colors.TextDark,    locked = false },
     { key = "hard",   name = "HARD",   desc = "hunts chains, reacts fast",     bg = UIConstants.Colors.Coral,      textColor = UIConstants.Colors.TextOnWarm,  locked = false },
-    { key = "pro",    name = "PRO",    desc = "coming soon",                   bg = UIConstants.Colors.Cream,      textColor = UIConstants.Colors.TextSoft,    locked = true  },
+    { key = "pro",    name = "PRO",    desc = "thinks ahead, builds setups",   bg = UIConstants.Colors.WarmDark,   textColor = UIConstants.Colors.TextOnWarm,  locked = false },
 }
 
 local panelOpen = false
