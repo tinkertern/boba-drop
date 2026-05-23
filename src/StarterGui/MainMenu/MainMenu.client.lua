@@ -625,6 +625,8 @@ local COMPACT_THRESHOLD_Y = 500
 
 local function applyCompactMode(isCompact)
     if isCompact then
+        -- Mobile landscape: greeting hidden, sizes shrunk, top-anchored so the
+        -- hero pins to the top and the pill row clears below.
         greetingFrame.Visible = false
         titleContainer.Size = UDim2.fromOffset(380, 60)
         titleSizeConstraint.MaxTextSize = 44
@@ -639,7 +641,11 @@ local function applyCompactMode(isCompact)
         playGroupLayout.Padding = UDim.new(0, 8)
         playGroup.Size = UDim2.fromOffset(200, 160)
         heroStack.Position = UDim2.new(0.5, 0, 0, 16)
+        heroStack.AnchorPoint = Vector2.new(0.5, 0)
     else
+        -- Desktop / tall portrait: full-size, vertically centered. Center-
+        -- anchor (not top-anchor) distributes dead space evenly above + below
+        -- the hero unit, which reads "composed" instead of "stranded at top".
         greetingFrame.Visible = true
         titleContainer.Size = UDim2.fromOffset(520, 92)
         titleSizeConstraint.MaxTextSize = UIConstants.TextSizes.DisplayLarge
@@ -653,7 +659,8 @@ local function applyCompactMode(isCompact)
         heroLayout.Padding = UDim.new(0, 24)
         playGroupLayout.Padding = UDim.new(0, 14)
         playGroup.Size = UDim2.fromOffset(260, 232)
-        heroStack.Position = UDim2.new(0.5, 0, 0, 40)
+        heroStack.Position = UDim2.fromScale(0.5, 0.5)
+        heroStack.AnchorPoint = Vector2.new(0.5, 0.5)
     end
 end
 
