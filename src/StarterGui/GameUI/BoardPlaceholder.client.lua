@@ -1105,6 +1105,24 @@ if roundEndRemote then
     end)
 end
 
+-- Defensive board wipe on every (re)entry into in_match. Practice rematch
+-- via the AGAIN button doesn't fire RoundEnd (the previous overflow already
+-- did), so without this listener the previous run's locked pearls render
+-- alongside SCORE = 0 from the freshly reset server state. Versus rematch
+-- already wipes via RoundEnd on overflow, so calling clearAll again on
+-- re-entry is a no-op there.
+local lastGameState = player:GetAttribute("GameState")
+player:GetAttributeChangedSignal("GameState"):Connect(function()
+    local state = player:GetAttribute("GameState")
+    if state == "in_match" and lastGameState ~= "in_match" then
+        clearAll()
+        stopDangerPulse()
+        setDangerRowStatic(DANGER_BASELINE_TRANSPARENCY)
+        lastLockedSnapshot = nil
+    end
+    lastGameState = state
+end)
+
 -- Theme change: repaint the cup tint + all locked pearls from the cached
 -- snapshot so an equip during a match takes effect immediately. The active
 -- piece overlay is owned by ActivePieceUpdate, which fires every tick, so we
