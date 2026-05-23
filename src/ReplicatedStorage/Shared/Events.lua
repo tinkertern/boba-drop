@@ -12,7 +12,7 @@ Events.Names = {
     LeaveMatch = "LeaveMatch",     -- payload: {}
     EnterQueue = "EnterQueue",     -- payload: { mode = "versus" | "practice" | "ai", difficulty? = "easy" | "medium" | "hard" | "pro" } — versus enters matchmaking, practice skips queue and starts a solo room immediately, ai spins up a 2-player room (real + bot, userId = "-1"). Difficulty defaults to "easy"; unknown values fall back to easy.
     LeaveQueue = "LeaveQueue",     -- payload: {}
-    PauseRequest = "PauseRequest", -- payload: { paused = boolean } — practice-mode only; halts gravity tick + soft drop + AFK timer for the requesting player. Silently ignored in versus.
+    PauseRequest = "PauseRequest", -- payload: { paused = boolean } — practice + AI modes only (no real opponent to grief); halts gravity tick + soft drop + AFK timer for the requesting player, and in AI mode also halts the bot's gravity tick + decide() loop. Silently ignored in versus.
 
     -- Server → Client
     ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }

@@ -145,8 +145,9 @@ if Remotes then
     end
     if pauseRemote then
         pauseRemote.OnServerEvent:Connect(function(player, payload)
-            -- Practice-only pause. RoomManager:setPaused gates on room.mode so
-            -- versus requests silently no-op; that's our anti-grief guarantee
+            -- Pause is honored in practice + AI modes (no real opponent to
+            -- grief). RoomManager:setPaused gates on room.mode so versus
+            -- requests silently no-op; that's our anti-grief guarantee
             -- (no free thinking time in 1v1). On pause=true we also cancel any
             -- pending AFK timer for the player — they're explicitly engaged with
             -- the UI, not idle. No re-arm on unpause; next piece spawn will
@@ -178,10 +179,17 @@ task.spawn(function()
         task.wait(Constants.GRAVITY_BASE)
         for _, room in table.clone(roomManager._rooms) do
             if room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
+                -- Practice + AI both honor the pause latch (no real opponent to
+                -- grief). For AI rooms, derive the room-paused signal from the
+                -- (single) real player so the bot freezes alongside them.
+                local roomPaused = false
                 for _, player in room.players do
-                    -- Skip paused players (practice-only; setPaused gates on
-                    -- mode == "practice", so a versus player's :isPaused is
-                    -- always false even if a malicious client fires the remote).
+                    if player and roomManager:isPaused(player.UserId) then
+                        roomPaused = true
+                        break
+                    end
+                end
+                for _, player in room.players do
                     if player and player.Parent and not roomManager:isPaused(player.UserId) then
                         room.gameState:applyInput(tostring(player.UserId), { type = "tick" })
                     end
@@ -190,8 +198,10 @@ task.spawn(function()
                 -- Tick its piece in lockstep with the real player so gravity
                 -- still pulls it down — without this, the bot's piece would
                 -- only descend when the AI decision loop issued a hardDrop,
-                -- breaking the "piece never reaches lock" failsafe.
-                if room.aiBot then
+                -- breaking the "piece never reaches lock" failsafe. Skipped
+                -- while roomPaused so pause freezes the whole match, not just
+                -- the player's side.
+                if room.aiBot and not roomPaused then
                     room.gameState:applyInput(room.aiBot.userId, { type = "tick" })
                 end
             end
@@ -294,6 +304,15 @@ roomManager:onRoomReady(function(room)
     local botId = room.aiBot.userId
     gs:subscribe("onPieceSpawned", function(event)
         if event.playerId ~= botId then return end
+        -- Don't start a new decision sequence while the player has the leave
+        -- modal open (AI-mode pause). The gravity tick is already gated, so
+        -- the bot's piece won't fall — and skipping decide() means the bot
+        -- won't rotate/move/hardDrop into a placement during pause either.
+        -- An in-flight decide that's mid-task.wait will finish its current
+        -- sequence (~500ms max); next spawn re-evaluates this gate.
+        for _, p in room.players do
+            if p and roomManager:isPaused(p.UserId) then return end
+        end
         -- Run the decision sequence in a spawned task so subscribers aren't
         -- blocked by AiOpponent.decide's task.wait calls.
         task.spawn(function()

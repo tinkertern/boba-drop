@@ -31,13 +31,16 @@ function RoomManager.new()
     return self
 end
 
--- Set the practice-mode pause latch for a player. Only honored when the player
--- is in a practice room — versus pause is a competitive grief vector (free
--- thinking time mid-match), so silently no-op there. The gravity tick + soft
--- drop loop + AFK timer in Main.server.lua all consult this latch via :isPaused.
+-- Pause latch for a player. Honored in practice and AI modes — both have no
+-- real opponent who'd be griefed by free thinking time. Versus is still
+-- silently rejected (pausing mid-1v1 is a competitive grief vector). The
+-- gravity tick + soft drop loop + AFK timer in Main.server.lua all consult
+-- this latch via :isPaused; AI ticking also reads it so the bot freezes
+-- alongside the player.
 function RoomManager:setPaused(player, paused)
     local room = self:roomOf(player)
-    if not room or room.mode ~= "practice" then return end
+    if not room then return end
+    if room.mode ~= "practice" and room.mode ~= "ai" then return end
     self._paused[player.UserId] = paused and true or nil
 end
 
