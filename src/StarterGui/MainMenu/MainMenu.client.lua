@@ -453,17 +453,22 @@ end)
 
 singlePlayerBtn.MouseButton1Click:Connect(function()
     if anyFired() then return end
-    sfx("confirm")
+    sfx("click")
     squish(singlePlayerScale)
-    if not enterQueueRemote then
-        warn("[MainMenu] EnterQueue remote missing, SINGLE PLAYER no-op")
-        return
+    -- SINGLE PLAYER opens the difficulty picker, which fires EnterQueue
+    -- itself once the player taps a tier. Latch stays unfired so the
+    -- player can close the picker and tap another mode button without
+    -- the menu being locked.
+    if _G.BobaDropDifficultyPicker and _G.BobaDropDifficultyPicker.open then
+        _G.BobaDropDifficultyPicker.open()
+    else
+        warn("[MainMenu] DifficultyPicker not ready, falling back to easy")
+        if enterQueueRemote then
+            singlePlayerFired = true
+            disableBtn(singlePlayerBtn)
+            enterQueueRemote:FireServer({ mode = "ai", difficulty = "easy" })
+        end
     end
-    singlePlayerFired = true
-    disableBtn(singlePlayerBtn)
-    -- Easy is the only AI tier shipped for v1; the difficulty param exists
-    -- on the contract for the future medium/hard/pro tiers.
-    enterQueueRemote:FireServer({ mode = "ai", difficulty = "easy" })
 end)
 
 -- Reset on returning to the menu (match end -> main_menu). The ScreenGui

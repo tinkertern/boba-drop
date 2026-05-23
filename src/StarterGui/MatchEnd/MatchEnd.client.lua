@@ -503,10 +503,16 @@ matchEndRemote.OnClientEvent:Connect(function(event)
     -- already implies. Skip the row in practice mode.
     -- AI runs always show a "vs AI" subtitle so the opponent identity is
     -- clear (the locked-pearl board on the right is otherwise indistinguishable
-    -- from a versus opponent).
+    -- from a versus opponent). Difficulty label appended when the server
+    -- includes it on the payload, otherwise just "vs AI".
     local subtitleText = nil
     if isAI then
-        subtitleText = "vs AI (easy)"
+        local diff = event.difficulty
+        if type(diff) == "string" and diff ~= "" then
+            subtitleText = "vs AI (" .. diff .. ")"
+        else
+            subtitleText = "vs AI"
+        end
     elseif not isPractice and lastRoundEnd and lastRoundEnd.reason and result ~= "draw" then
         local roundWinnerLocal = (lastRoundEnd.winner == localId)
             or (lastRoundEnd.winner == nil and winnerId == localId)
