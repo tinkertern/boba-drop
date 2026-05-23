@@ -690,14 +690,15 @@ local function traceLanding(pivotRow, pivotCol, dr, dc)
 end
 
 -- Light pearl colors (cream / white / pale) blend into the cup floor when
--- used directly for the ghost outline. Clamp the HSV value down and bump
--- saturation up so the outline always has enough contrast against the
--- cream cup background while still reading as the same hue as the pearl
--- that's about to drop.
+-- used directly for the ghost outline. Clamp the HSV value down so the
+-- outline darkens enough for contrast, but leave saturation alone — bumping
+-- saturation turned near-white pearls into saturated brown outlines, which
+-- read as the wrong hue. Letting saturation stay low keeps a "white pearl"
+-- ghost looking like a dark grey ring, which reads as the same pearl just
+-- shadowed, not a different color.
 local function ghostStrokeColor(color)
     local h, s, v = Color3.toHSV(color)
     if v > 0.55 then v = 0.45 end
-    if s < 0.30 then s = 0.50 end
     return Color3.fromHSV(h, s, v)
 end
 
