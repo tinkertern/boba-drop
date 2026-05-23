@@ -111,6 +111,13 @@ if Remotes then
     if leaveRemote then
         leaveRemote.OnServerEvent:Connect(function(player, payload)
             if not checkRate(player, "leaveMatch", 2, 3) then return end
+            -- Cancel any in-flight per-piece AFK timer before the room closes.
+            -- In practice mode, requestLeave skips forfeitRound (no opponent),
+            -- so gs.phase stays "playing" after _closeRoom. An armed AFK timer
+            -- would still fire its callback, hit `_endPracticeOnTopout`, and
+            -- surface a delayed "you lost" MatchEnd panel at the main menu.
+            -- Cancelling here also covers the match-end Leave path harmlessly.
+            disconnectHandler:clearAfkTimer(player)
             -- Both in-match (PauseConfirm) and match-end (Leave-instead-of-
             -- Rematch) fire this remote. RoomManager:requestLeave routes by
             -- room.phase so each path does the right thing.
@@ -272,6 +279,12 @@ roomManager:onRoomReady(function(room)
             -- between the timeout firing and this callback running.
             if room.gameState ~= gs then return end
             if gs:phase() ~= "playing" then return end
+            -- Defense-in-depth against a missed clearAfkTimer on leave: if the
+            -- player no longer belongs to this room, the room has been closed
+            -- since the timer was armed. Practice in particular leaves gs.phase
+            -- as "playing" after _closeRoom (no forfeit path), so the phase
+            -- check above doesn't catch this case on its own.
+            if roomManager:roomOf(player) ~= room then return end
             if gs:isSolo() then
                 -- Practice AFK: end the run with the same dispatch shape as a
                 -- topout. No opponent exists to forfeit to.
