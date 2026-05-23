@@ -142,18 +142,47 @@ for i = 1, PEARL_COUNT do
 end
 
 --------------------------------------------------------------------------------
--- Title wordmark "BOBA DROP". Display font, large, top-center with a
--- soft drop shadow and a 2s idle scale pulse so it never reads as static.
+-- Hero stack: wraps the BOBA DROP wordmark + the PLAY / PRACTICE / SINGLE
+-- PLAYER button group in a single centered vertical layout. Without this
+-- wrapper the title (Scale-positioned at y=0.18) and the PlayGroup (Scale-
+-- positioned at y=0.5) drift toward each other on short viewports and
+-- collide. The wrapper anchors at the viewport center, uses AutomaticSize.Y
+-- to fit its children, and keeps a fixed 50px gap between title and CTAs
+-- regardless of viewport height.
+--------------------------------------------------------------------------------
+
+local heroStack = Instance.new("Frame")
+heroStack.Name = "HeroStack"
+heroStack.Size = UDim2.fromOffset(520, 0)
+heroStack.AutomaticSize = Enum.AutomaticSize.Y
+heroStack.Position = UDim2.fromScale(0.5, 0.5)
+heroStack.AnchorPoint = Vector2.new(0.5, 0.5)
+heroStack.BackgroundTransparency = 1
+heroStack.ZIndex = 5
+heroStack.Parent = screenGui
+
+local heroLayout = Instance.new("UIListLayout")
+heroLayout.FillDirection = Enum.FillDirection.Vertical
+heroLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+heroLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+heroLayout.SortOrder = Enum.SortOrder.LayoutOrder
+heroLayout.Padding = UDim.new(0, 50)
+heroLayout.Parent = heroStack
+
+--------------------------------------------------------------------------------
+-- Title wordmark "BOBA DROP". Display font, large, with a soft drop shadow
+-- and a 2s idle scale pulse so it never reads as static. Position is owned
+-- by HeroStack's UIListLayout (LayoutOrder=1).
 --------------------------------------------------------------------------------
 
 local titleContainer = Instance.new("Frame")
 titleContainer.Name = "Title"
 titleContainer.Size = UDim2.fromOffset(520, 92)
-titleContainer.Position = UDim2.fromScale(0.5, 0.18)
-titleContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+titleContainer.AnchorPoint = Vector2.new(0.5, 0)
 titleContainer.BackgroundTransparency = 1
+titleContainer.LayoutOrder = 1
 titleContainer.ZIndex = 5
-titleContainer.Parent = screenGui
+titleContainer.Parent = heroStack
 
 local titleScale = Instance.new("UIScale")
 titleScale.Scale = 1
@@ -347,19 +376,19 @@ local function squish(scaleObj)
 end
 
 -- Three play buttons (PLAY versus / PRACTICE solo / SINGLE PLAYER vs AI)
--- are vertically stacked at viewport center as a button group. A wrapper
--- Frame + UIListLayout owns positioning so we don't juggle absolute
--- Position offsets when buttons are added or sizes change. PLAY is the
--- visually loudest as the primary multiplayer CTA; PRACTICE and SINGLE
--- PLAYER are equal-weight secondary alternatives below.
+-- are vertically stacked as a button group inside HeroStack. The outer
+-- HeroStack layout handles the gap from the title above; this group's
+-- own UIListLayout handles the 14px gap between the 3 buttons. PLAY is
+-- the visually loudest as the primary multiplayer CTA; PRACTICE and
+-- SINGLE PLAYER are equal-weight secondary alternatives below.
 local playGroup = Instance.new("Frame")
 playGroup.Name = "PlayGroup"
 playGroup.Size = UDim2.fromOffset(260, 232)
-playGroup.Position = UDim2.fromScale(0.5, 0.5)
-playGroup.AnchorPoint = Vector2.new(0.5, 0.5)
+playGroup.AnchorPoint = Vector2.new(0.5, 0)
 playGroup.BackgroundTransparency = 1
+playGroup.LayoutOrder = 2
 playGroup.ZIndex = 10
-playGroup.Parent = screenGui
+playGroup.Parent = heroStack
 
 local playGroupLayout = Instance.new("UIListLayout")
 playGroupLayout.FillDirection = Enum.FillDirection.Vertical
