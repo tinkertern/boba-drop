@@ -46,8 +46,10 @@ local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
 scrim.Active = true
 scrim.Size = UDim2.fromScale(1, 1)
-scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
-scrim.BackgroundTransparency = 0.55
+-- Scrim is fully transparent — Sarah didn't want the dark wash behind
+-- modals. We keep the Frame (Active=true) so it still captures clicks
+-- outside the modal rect to close it via the InputBegan handler below.
+scrim.BackgroundTransparency = 1
 scrim.BorderSizePixel = 0
 scrim.Visible = false
 scrim.Parent = gui

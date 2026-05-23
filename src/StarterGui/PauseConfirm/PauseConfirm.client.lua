@@ -85,8 +85,9 @@ leaveCornerScale.Parent = leaveCorner
 local scrim = Instance.new("Frame")
 scrim.Name = "Scrim"
 scrim.Size = UDim2.fromScale(1, 1)
-scrim.BackgroundColor3 = UIConstants.Colors.WarmDark
-scrim.BackgroundTransparency = 0.45 -- final visual at 0.55 opacity (1 - 0.45 alpha)
+-- Scrim is fully transparent — Sarah didn't want the dark wash behind
+-- the leave-confirm modal.
+scrim.BackgroundTransparency = 1
 scrim.BorderSizePixel = 0
 scrim.Visible = false
 scrim.Parent = screen
