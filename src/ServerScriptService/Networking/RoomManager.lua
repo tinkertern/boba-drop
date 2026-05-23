@@ -96,11 +96,12 @@ end
 -- it has no Player Instance for FireClient. Idempotent for the same reason
 -- enterPractice is (rapid PLAY taps shouldn't stack rooms).
 --
--- Tonight only `easy` is wired; unknown / falsy difficulty values default to
--- easy so a client that ships ahead of the tier rollout can't crash the route.
+-- Easy and medium are live; hard/pro are accepted (route through medium policy
+-- via AiOpponent._policyFor) so a client that ships a future tier ahead of the
+-- engine can't crash the route. Unknown / falsy values default to easy.
 function RoomManager:enterAi(player, difficulty)
     if self._playerRoom[player.UserId] then return end
-    local validDifficulties = { easy = true, normal = true, hard = true, pro = true }
+    local validDifficulties = { easy = true, medium = true, hard = true, pro = true }
     difficulty = (type(difficulty) == "string" and validDifficulties[difficulty]) and difficulty or "easy"
     print("[RoomManager] " .. player.Name .. " entering AI (vs bot, " .. difficulty .. ")")
     self:_startAiRoom(player, difficulty)
