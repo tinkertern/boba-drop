@@ -116,10 +116,18 @@ if Remotes then
         end)
     end
     if enterQueueRemote then
-        enterQueueRemote.OnServerEvent:Connect(function(player)
+        enterQueueRemote.OnServerEvent:Connect(function(player, payload)
             if not checkRate(player, "enterQueue", 3, 5) then return end
             if roomManager:roomOf(player) then return end
-            roomManager:enqueuePlayer(player)
+            -- Payload defaults to versus for back-compat with old clients that
+            -- fire `:FireServer()` with no args. Any unrecognized value also
+            -- falls through to versus (server doesn't trust client strings).
+            payload = (type(payload) == "table") and payload or {}
+            if payload.mode == "practice" then
+                roomManager:enterPractice(player)
+            else
+                roomManager:enqueuePlayer(player)
+            end
         end)
     end
     if leaveQueueRemote then
@@ -204,7 +212,13 @@ roomManager:onRoomReady(function(room)
             -- between the timeout firing and this callback running.
             if room.gameState ~= gs then return end
             if gs:phase() ~= "playing" then return end
-            gs:forfeitRound(event.playerId, "afk")
+            if gs:isSolo() then
+                -- Practice AFK: end the run with the same dispatch shape as a
+                -- topout. No opponent exists to forfeit to.
+                gs:_endPracticeOnTopout(event.playerId)
+            else
+                gs:forfeitRound(event.playerId, "afk")
+            end
         end)
     end)
     gs:subscribe("onPieceLocked", function(event)

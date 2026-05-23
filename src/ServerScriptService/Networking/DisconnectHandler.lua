@@ -29,10 +29,12 @@ function DisconnectHandler:onPlayerLeaving(player)
     if not room then return end
 
     if room.phase == "playing" then
-        -- In-round disconnect: 10s grace period, then forfeit
+        -- In-round disconnect: 10s grace period, then forfeit (versus) or close
+        -- the room (practice — no opponent to forfeit to).
         self._disconnectTasks[pid] = task.delay(Constants.DISCONNECT_GRACE, function()
-            -- After grace, forfeit the round
-            if room.gameState and room.gameState:phase() == "playing" then
+            if room.mode == "practice" then
+                self._roomManager:_closeRoom(room)
+            elseif room.gameState and room.gameState:phase() == "playing" then
                 room.gameState:forfeitRound(tostring(pid), "disconnect")
             end
             self._disconnectTasks[pid] = nil

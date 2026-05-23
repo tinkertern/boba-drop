@@ -8,8 +8,10 @@ Events.Names = {
     InputRotate = "InputRotate",   -- payload: { direction = "cw" | "ccw" }
     InputSoftDrop = "InputSoftDrop", -- payload: { held = boolean }
     InputHardDrop = "InputHardDrop", -- payload: {}
-    RematchRequest = "RematchRequest", -- payload: {}
+    RematchRequest = "RematchRequest", -- payload: {} — in practice mode, a single fire restarts the solo room (no second-vote wait)
     LeaveMatch = "LeaveMatch",     -- payload: {}
+    EnterQueue = "EnterQueue",     -- payload: { mode = "versus" | "practice" } — versus enters matchmaking, practice skips queue and starts a solo room immediately
+    LeaveQueue = "LeaveQueue",     -- payload: {}
 
     -- Server → Client
     ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }
@@ -20,7 +22,7 @@ Events.Names = {
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
     GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number, cellsDropped = [{ row, col }, ...] }
     RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }
-    MatchEnd = "MatchEnd",         -- payload: { winner, finalScores = { [pid] = number }, bestChain = { [pid] = number } }
+    MatchEnd = "MatchEnd",         -- payload: { winner, loser?, result = "win" | "practice_ended", mode = "versus" | "practice", finalScores = { [pid] = number }, bestChain = { [pid] = number } }
 }
 
 return Events

@@ -57,6 +57,15 @@ function RoomManager:enqueuePlayer(player)
     self:_tryMatchmake()
 end
 
+-- Practice mode entry: bypass the queue and spin up a 1-player room directly.
+-- Idempotent against an already-in-room player so a double-fire of EnterQueue
+-- {mode = "practice"} can't stack rooms (mirrors enqueuePlayer's guard).
+function RoomManager:enterPractice(player)
+    if self._playerRoom[player.UserId] then return end
+    print("[RoomManager] " .. player.Name .. " entering practice (solo)")
+    self:_startSoloRoom(player)
+end
+
 function RoomManager:leaveQueue(player)
     for i, queued in self._queue do
         if queued == player then
@@ -98,19 +107,39 @@ end
 function RoomManager:_startRoom(p1, p2)
     local seed = math.random(1, 1000000)
     local gs = GameState.new({ players = { tostring(p1.UserId), tostring(p2.UserId) }, seed = seed })
-    local room = { players = { p1, p2 }, gameState = gs, phase = "playing" }
+    local room = { players = { p1, p2 }, gameState = gs, phase = "playing", mode = "versus" }
     table.insert(self._rooms, room)
     self._playerRoom[p1.UserId] = room
     self._playerRoom[p2.UserId] = room
     self._rematchVotes[room] = {}
     p1:SetAttribute("GameState", "in_match")
     p2:SetAttribute("GameState", "in_match")
+    -- MatchMode tells client-side HUDs (UIStateController, OpponentBoard, MatchEnd)
+    -- which variant to render. Cleared in _closeRoom.
+    p1:SetAttribute("MatchMode", "versus")
+    p2:SetAttribute("MatchMode", "versus")
     -- Wire subscribers (StateSync, etc.) BEFORE the countdown dispatch so the
     -- onRoundStartCountdown event reaches the clients. Also before startRound
     -- so the initial onPieceSpawned events aren't dropped.
     self:_fireRoomReady(room)
     self:_runCountdownThenStart(gs)
     print("[RoomManager] room started: " .. p1.Name .. " vs " .. p2.Name)
+end
+
+function RoomManager:_startSoloRoom(player)
+    local seed = math.random(1, 1000000)
+    local gs = GameState.new({ players = { tostring(player.UserId) }, seed = seed })
+    local room = { players = { player }, gameState = gs, phase = "playing", mode = "practice" }
+    table.insert(self._rooms, room)
+    self._playerRoom[player.UserId] = room
+    self._rematchVotes[room] = {}
+    player:SetAttribute("GameState", "in_match")
+    player:SetAttribute("MatchMode", "practice")
+    -- Same ordering as versus: wire subscribers first so the countdown +
+    -- initial piece spawn events reach the client.
+    self:_fireRoomReady(room)
+    self:_runCountdownThenStart(gs)
+    print("[RoomManager] solo room started: " .. player.Name)
 end
 
 function RoomManager:_runCountdownThenStart(gs)
@@ -164,7 +193,11 @@ function RoomManager:requestLeave(player)
         -- the opponent's MatchEnd panel show "opponent left" via reason; the
         -- _closeRoom call wipes the leaving player back to main_menu after
         -- the cascade so they don't get stuck on their own MatchEnd panel.
-        if room.gameState and room.gameState:phase() == "playing" then
+        --
+        -- Practice mode has no opponent to forfeit to, and forfeitRound would
+        -- assert on _otherPlayer. Skip straight to _closeRoom — the player
+        -- explicitly chose to quit, so no match-end panel is needed.
+        if room.mode ~= "practice" and room.gameState and room.gameState:phase() == "playing" then
             room.gameState:forfeitRound(tostring(player.UserId), "leave")
         end
         self:_closeRoom(room)
@@ -178,18 +211,30 @@ function RoomManager:registerRematchVote(player, accept)
     if not room or room.phase ~= "postMatch" then return end
     if accept then
         self._rematchVotes[room][player.UserId] = true
-        if self._rematchVotes[room][room.players[1].UserId] and self._rematchVotes[room][room.players[2].UserId] then
-            -- Both accepted — start new match
-            print("[RoomManager] rematch accepted — restarting room")
+        -- Practice mode: only one player exists. A single accept-vote restarts
+        -- the room immediately — no second-vote wait. Mirrors versus rematch
+        -- otherwise (new seed, new GameState, re-wire, countdown + startRound).
+        local soloRestart = (room.mode == "practice")
+        local versusBothAccepted = (room.mode ~= "practice")
+            and self._rematchVotes[room][room.players[1].UserId]
+            and self._rematchVotes[room][room.players[2].UserId]
+        if soloRestart or versusBothAccepted then
+            print("[RoomManager] rematch accepted — restarting room (" .. room.mode .. ")")
             local seed = math.random(1, 1000000)
-            room.gameState = GameState.new({
-                players = { tostring(room.players[1].UserId), tostring(room.players[2].UserId) },
-                seed = seed,
-            })
+            local playerIds = {}
+            for _, p in room.players do
+                table.insert(playerIds, tostring(p.UserId))
+            end
+            room.gameState = GameState.new({ players = playerIds, seed = seed })
             room.phase = "playing"
             self._rematchVotes[room] = {}
             for _, p in room.players do
-                if p and p.Parent then p:SetAttribute("GameState", "in_match") end
+                if p and p.Parent then
+                    p:SetAttribute("GameState", "in_match")
+                    -- MatchMode is sticky across rematches: a practice rematch
+                    -- stays practice, versus stays versus.
+                    p:SetAttribute("MatchMode", room.mode)
+                end
             end
             -- Re-wire the new GameState's subscribers before the countdown.
             self:_fireRoomReady(room)
@@ -210,6 +255,9 @@ function RoomManager:_closeRoom(room)
             -- re-enqueue — re-entering the queue requires a fresh PLAY click
             -- (server-side: EnterQueue RemoteEvent).
             p:SetAttribute("GameState", "main_menu")
+            -- Clear MatchMode so the next match's attribute write is observed
+            -- as a fresh value by GetAttributeChangedSignal listeners.
+            p:SetAttribute("MatchMode", nil)
         end
     end
     self._rematchVotes[room] = nil
