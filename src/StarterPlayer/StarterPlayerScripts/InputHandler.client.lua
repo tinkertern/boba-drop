@@ -10,9 +10,15 @@
 -- The default Roblox camera scripts bind Left/Right arrows via CAS for
 -- camera orbit (and sink them), which was eating those arrows before
 -- UIS:InputBegan would fire — WASD passed through because they were not
--- in the camera's binding list. Registering our own CAS bindings with
--- Sink overrides the camera bindings at the same priority, so all five
--- action keys reach the remotes.
+-- in the camera's binding list.
+--
+-- BindAction with default priority lost a race against the camera: when
+-- PlayerModule loads its camera scripts (typically after CharacterAdded,
+-- i.e. after this script runs), they BindAction the arrow keys at the
+-- same default priority and land on top of our binding in the CAS stack.
+-- Same-priority ties go to the most recent binder, so the camera ate the
+-- arrows again. Fix: BindActionAtPriority with High (3000) so we win
+-- regardless of load order.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -71,11 +77,12 @@ local function hardDrop(_, inputState)
     return Enum.ContextActionResult.Sink
 end
 
-ContextActionService:BindAction("BobaDropMoveLeft",  moveLeft,  false, Enum.KeyCode.Left,  Enum.KeyCode.A)
-ContextActionService:BindAction("BobaDropMoveRight", moveRight, false, Enum.KeyCode.Right, Enum.KeyCode.D)
-ContextActionService:BindAction("BobaDropRotate",    rotate,    false, Enum.KeyCode.Up,    Enum.KeyCode.W)
-ContextActionService:BindAction("BobaDropSoftDrop",  softDrop,  false, Enum.KeyCode.Down,  Enum.KeyCode.S)
-ContextActionService:BindAction("BobaDropHardDrop",  hardDrop,  false, Enum.KeyCode.Space)
+local HIGH_PRIORITY = Enum.ContextActionPriority.High.Value
+ContextActionService:BindActionAtPriority("BobaDropMoveLeft",  moveLeft,  false, HIGH_PRIORITY, Enum.KeyCode.Left,  Enum.KeyCode.A)
+ContextActionService:BindActionAtPriority("BobaDropMoveRight", moveRight, false, HIGH_PRIORITY, Enum.KeyCode.Right, Enum.KeyCode.D)
+ContextActionService:BindActionAtPriority("BobaDropRotate",    rotate,    false, HIGH_PRIORITY, Enum.KeyCode.Up,    Enum.KeyCode.W)
+ContextActionService:BindActionAtPriority("BobaDropSoftDrop",  softDrop,  false, HIGH_PRIORITY, Enum.KeyCode.Down,  Enum.KeyCode.S)
+ContextActionService:BindActionAtPriority("BobaDropHardDrop",  hardDrop,  false, HIGH_PRIORITY, Enum.KeyCode.Space)
 
 -- Disable Roblox's default PlayerControls permanently. Boba Drop is a 2D UI
 -- experience; the avatar exists in Workspace but is never visible or relevant.
