@@ -17,6 +17,15 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+-- Touch-only devices (phones, tablets without a real mouse) should not show
+-- the custom cursor. The system fires Touch through UserInputService just
+-- like a MouseButton1, so the cursor was tracking the last tap point and
+-- swapping to the _DOWN variant on every touch press. Bail here; hybrid
+-- laptops with both keep the cursor since MouseEnabled is true.
+if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+    return
+end
+
 local CURSOR_SIZE = 64
 local CURSORS = {
     DEFAULT = "rbxassetid://105870042566386",
