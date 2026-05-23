@@ -12,6 +12,7 @@ Events.Names = {
     LeaveMatch = "LeaveMatch",     -- payload: {}
     EnterQueue = "EnterQueue",     -- payload: { mode = "versus" | "practice" } — versus enters matchmaking, practice skips queue and starts a solo room immediately
     LeaveQueue = "LeaveQueue",     -- payload: {}
+    PauseRequest = "PauseRequest", -- payload: { paused = boolean } — practice-mode only; halts gravity tick + soft drop + AFK timer for the requesting player. Silently ignored in versus.
 
     -- Server → Client
     ActivePieceUpdate = "ActivePieceUpdate", -- payload: { playerId, isLocal, colors = { a, b }, pivotRow, pivotCol, orientation }

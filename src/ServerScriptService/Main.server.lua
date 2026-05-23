@@ -69,6 +69,7 @@ if Remotes then
     local leaveRemote = Remotes:WaitForChild("LeaveMatch", 30)
     local enterQueueRemote = Remotes:WaitForChild("EnterQueue", 30)
     local leaveQueueRemote = Remotes:WaitForChild("LeaveQueue", 30)
+    local pauseRemote = Remotes:WaitForChild("PauseRequest", 30)
 
     if moveRemote then
         moveRemote.OnServerEvent:Connect(function(player, payload)
@@ -136,6 +137,23 @@ if Remotes then
             roomManager:leaveQueue(player)
         end)
     end
+    if pauseRemote then
+        pauseRemote.OnServerEvent:Connect(function(player, payload)
+            -- Practice-only pause. RoomManager:setPaused gates on room.mode so
+            -- versus requests silently no-op; that's our anti-grief guarantee
+            -- (no free thinking time in 1v1). On pause=true we also cancel any
+            -- pending AFK timer for the player — they're explicitly engaged with
+            -- the UI, not idle. No re-arm on unpause; next piece spawn will
+            -- start a fresh timer through the existing onPieceSpawned hook.
+            if not checkRate(player, "pause", 5, 5) then return end
+            payload = (type(payload) == "table") and payload or {}
+            local paused = payload.paused == true
+            roomManager:setPaused(player, paused)
+            if paused and roomManager:isPaused(player.UserId) then
+                disconnectHandler:clearAfkTimer(player)
+            end
+        end)
+    end
 else
     warn("[Main.server] Remotes folder missing — input routing disabled")
 end
@@ -155,7 +173,10 @@ task.spawn(function()
         for _, room in table.clone(roomManager._rooms) do
             if room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
                 for _, player in room.players do
-                    if player and player.Parent then
+                    -- Skip paused players (practice-only; setPaused gates on
+                    -- mode == "practice", so a versus player's :isPaused is
+                    -- always false even if a malicious client fires the remote).
+                    if player and player.Parent and not roomManager:isPaused(player.UserId) then
                         room.gameState:applyInput(tostring(player.UserId), { type = "tick" })
                     end
                 end
@@ -175,7 +196,7 @@ task.spawn(function()
     while true do
         task.wait(interval)
         for userId, held in table.clone(roomManager._softDropping) do
-            if held then
+            if held and not roomManager:isPaused(userId) then
                 local room = roomManager._playerRoom[userId]
                 if room and room.phase == "playing" and room.gameState and room.gameState:phase() == "playing" then
                     room.gameState:applyInput(tostring(userId), { type = "tick" })

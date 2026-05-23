@@ -18,7 +18,22 @@ function RoomManager.new()
     self._rematchVotes = {} -- room → { [playerId] = boolean }
     self._roomReadyListeners = {} -- fired with (room) AFTER GameState exists but BEFORE startRound
     self._softDropping = {} -- [userId] = true while the Down/S key is held; driven by softDropRemote
+    self._paused = {} -- [userId] = true while the PauseConfirm modal is open; practice-only
     return self
+end
+
+-- Set the practice-mode pause latch for a player. Only honored when the player
+-- is in a practice room — versus pause is a competitive grief vector (free
+-- thinking time mid-match), so silently no-op there. The gravity tick + soft
+-- drop loop + AFK timer in Main.server.lua all consult this latch via :isPaused.
+function RoomManager:setPaused(player, paused)
+    local room = self:roomOf(player)
+    if not room or room.mode ~= "practice" then return end
+    self._paused[player.UserId] = paused and true or nil
+end
+
+function RoomManager:isPaused(userId)
+    return self._paused[userId] == true
 end
 
 function RoomManager:setSoftDrop(player, held)
@@ -250,6 +265,7 @@ function RoomManager:_closeRoom(room)
     for _, p in room.players do
         self._playerRoom[p.UserId] = nil
         self._softDropping[p.UserId] = nil
+        self._paused[p.UserId] = nil
         if p.Parent then
             -- Match end / Leave returns the player to the main menu. No auto
             -- re-enqueue — re-entering the queue requires a fresh PLAY click
