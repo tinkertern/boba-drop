@@ -56,10 +56,11 @@ local PEARL_SIZE = UDim2.fromOffset(22, 22)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "NextPiecePreview"
 screenGui.ResetOnSpawn = false
--- IgnoreGuiInset = true to match ScoreDisplay. Both panels share the full-
--- screen coord origin now; the 8 px gap below the score pill is just the
--- offset arithmetic (12 + 60 + 8 = 80, matching ONSCREEN_POS).
-screenGui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false to match ScoreDisplay so the Roblox topbar sits
+-- above both panels instead of hiding their top edges on desktop. The
+-- 8 px gap below the score pill is just the offset arithmetic
+-- (12 + 60 + 8 = 80, matching ONSCREEN_POS).
+screenGui.IgnoreGuiInset = false
 screenGui.DisplayOrder = UIConstants.ZOrder.HUD or 100
 screenGui.Enabled = false
 screenGui.Parent = playerGui

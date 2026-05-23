@@ -18,10 +18,12 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ScoreDisplay"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = UIConstants.ZOrder.ChainCounter - 1
--- IgnoreGuiInset so we own the full screen — landscape mobile only has ~390
--- vertical px to spend and the 36px topbar inset was pushing SCORE down into
--- the playable area.
-screenGui.IgnoreGuiInset = true
+-- IgnoreGuiInset = false so the Roblox topbar (the dark menu/chat capsule
+-- on desktop, ~36px tall on mobile) sits ABOVE the score pill instead of
+-- overlapping it. Earlier we tried IgnoreGuiInset=true to gain mobile
+-- vertical headroom, but on desktop the topbar then hid the "SCO" of
+-- SCORE. The auto-inset is the correct behaviour for top-anchored HUD.
+screenGui.IgnoreGuiInset = false
 screenGui.Parent = playerGui
 
 local panel = Instance.new("Frame")
