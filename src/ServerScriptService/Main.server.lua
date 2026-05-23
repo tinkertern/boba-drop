@@ -220,6 +220,21 @@ task.spawn(function()
     end
 end)
 
+-- ----- Queue timeout sweeper -----
+-- A player solo-queueing for versus shouldn't sit in matchmaking forever when
+-- no second player joins (the v1 ship will have a small concurrent userbase,
+-- so this WILL happen). Every 5s, scan the queue for players older than
+-- QUEUE_TIMEOUT_SEC and flip them back to main_menu. Roblox's UI bindings on
+-- the GameState attribute will return them to the menu automatically; a
+-- proper toast remote can ship in v1.1 (Producer's lane).
+local QUEUE_TIMEOUT_SEC = 60
+task.spawn(function()
+    while true do
+        task.wait(5)
+        roomManager:scanQueueTimeouts(QUEUE_TIMEOUT_SEC)
+    end
+end)
+
 -- ----- AFK piece timer -----
 -- Per-piece grief / inattention guard. When a piece spawns for a player, start
 -- an AFK_PIECE_TIMEOUT countdown; clearing on lock. If it fires, forfeit the
@@ -285,6 +300,24 @@ roomManager:onRoomReady(function(room)
             AiOpponent.decide(gs, room, event)
         end)
     end)
+end)
+
+-- ----- Graceful shutdown -----
+-- Roblox calls BindToClose when the server is being torn down (deploy push,
+-- idle reap, soft shutdown). It blocks termination for up to 30s, giving
+-- pending FireClient packets time to flush — chains, garbage, etc. fired in
+-- the last frame would otherwise be dropped mid-flight. We don't fire MatchEnd
+-- here: the client's MatchEnd panel infers winner/loser from scores and would
+-- show a confusing "YOU WIN" / "YOU LOSE" right before the server vanished.
+-- Standard Roblox "server shutting down" overlay is the better UX. v1.1 can
+-- add a custom toast remote if Producer wants something fancier.
+--
+-- Studio playtests don't trigger BindToClose, so this is live-only behaviour.
+game:BindToClose(function()
+    local roomCount = #roomManager._rooms
+    if roomCount == 0 then return end
+    warn("[Main.server] Shutdown: " .. roomCount .. " active room(s); waiting 3s for replication flush")
+    task.wait(3)
 end)
 
 print("[Main.server] Boba Drop server ready")

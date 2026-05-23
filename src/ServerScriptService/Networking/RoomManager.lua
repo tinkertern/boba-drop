@@ -21,6 +21,7 @@ RoomManager.BOT_USERID = BOT_USERID
 function RoomManager.new()
     local self = setmetatable({}, RoomManager)
     self._queue = {}      -- list of Player Instances waiting
+    self._queueEnqueuedAt = {} -- [userId] = os.clock() when the player joined the queue; used by scanQueueTimeouts
     self._rooms = {}      -- list of { players = {p1, p2}, gameState = GameState, phase = "playing" | "postMatch" }
     self._playerRoom = {} -- playerId → room
     self._rematchVotes = {} -- room → { [playerId] = boolean }
@@ -75,9 +76,35 @@ function RoomManager:enqueuePlayer(player)
         if queued == player then return end
     end
     table.insert(self._queue, player)
+    self._queueEnqueuedAt[player.UserId] = os.clock()
     player:SetAttribute("GameState", "matching")
     print("[RoomManager] enqueued " .. player.Name .. " (queue size " .. #self._queue .. ")")
     self:_tryMatchmake()
+end
+
+-- Sweep the queue for players who've been waiting longer than maxAgeSec.
+-- Returns the list of timed-out Players and removes them from the queue +
+-- flips their GameState attribute back to main_menu. Caller is responsible
+-- for any client-side notification (toast, etc.) — none today, but the hook
+-- exists so Producer can wire one without a server change.
+function RoomManager:scanQueueTimeouts(maxAgeSec)
+    local now = os.clock()
+    local timedOut = {}
+    -- Iterate backwards so table.remove during traversal is safe.
+    for i = #self._queue, 1, -1 do
+        local player = self._queue[i]
+        local enqueuedAt = self._queueEnqueuedAt[player.UserId]
+        if enqueuedAt and (now - enqueuedAt) >= maxAgeSec then
+            table.remove(self._queue, i)
+            self._queueEnqueuedAt[player.UserId] = nil
+            if player.Parent then
+                player:SetAttribute("GameState", "main_menu")
+            end
+            table.insert(timedOut, player)
+            print("[RoomManager] queue timeout for " .. player.Name .. " after " .. math.floor(now - enqueuedAt) .. "s")
+        end
+    end
+    return timedOut
 end
 
 -- Practice mode entry: bypass the queue and spin up a 1-player room directly.
@@ -115,6 +142,7 @@ function RoomManager:leaveQueue(player)
             break
         end
     end
+    self._queueEnqueuedAt[player.UserId] = nil
     if player.Parent then
         player:SetAttribute("GameState", "main_menu")
     end
@@ -129,19 +157,28 @@ function RoomManager:_tryMatchmake()
         -- Race window: between enqueuePlayer and this firing, either player
         -- may have left the server. PlayerRemoving doesn't currently scrub
         -- the queue, so we get a Player Instance with no Parent. Skip pairing;
-        -- re-queue the survivor at the front so they don't lose their slot.
+        -- re-queue the survivor at the front so they don't lose their slot
+        -- (and preserve their original enqueue timestamp so they still count
+        -- toward queue-timeout if they keep waiting alone).
         local p1Alive = p1.Parent ~= nil
         local p2Alive = p2.Parent ~= nil
         if p1Alive and p2Alive then
+            self._queueEnqueuedAt[p1.UserId] = nil
+            self._queueEnqueuedAt[p2.UserId] = nil
             self:_startRoom(p1, p2)
         elseif p1Alive then
+            self._queueEnqueuedAt[p2.UserId] = nil
             table.insert(self._queue, 1, p1)
             return
         elseif p2Alive then
+            self._queueEnqueuedAt[p1.UserId] = nil
             table.insert(self._queue, 1, p2)
             return
+        else
+            -- both gone → drop both
+            self._queueEnqueuedAt[p1.UserId] = nil
+            self._queueEnqueuedAt[p2.UserId] = nil
         end
-        -- both gone → drop both, continue trying with the rest
     end
 end
 
