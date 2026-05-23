@@ -346,11 +346,16 @@ local function squish(scaleObj)
     ):Play()
 end
 
+-- PLAY + PRACTICE are stacked at viewport vertical center as a button
+-- group: PLAY's bottom edge sits 8px above center, PRACTICE's top edge
+-- sits 8px below center. 16px gap between them keeps the group readable
+-- without crowding. Pill row below is bottom-anchored so neither touches
+-- the play/practice pair regardless of viewport height.
 local playBtn = Instance.new("TextButton")
 playBtn.Name = "PlayBtn"
 playBtn.Size = UDim2.fromOffset(260, 88)
-playBtn.Position = UDim2.fromScale(0.5, 0.5)
-playBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+playBtn.Position = UDim2.new(0.5, 0, 0.5, -8)
+playBtn.AnchorPoint = Vector2.new(0.5, 1)
 playBtn.AutoButtonColor = false
 playBtn.BorderSizePixel = 0
 playBtn.BackgroundColor3 = UIConstants.Colors.Mint
@@ -402,8 +407,8 @@ end)
 
 local practiceBtn = Instance.new("TextButton")
 practiceBtn.Name = "PracticeBtn"
-practiceBtn.Size = UDim2.fromOffset(200, 44)
-practiceBtn.Position = UDim2.new(0.5, 0, 0.5, 72)
+practiceBtn.Size = UDim2.fromOffset(220, 56)
+practiceBtn.Position = UDim2.new(0.5, 0, 0.5, 8)
 practiceBtn.AnchorPoint = Vector2.new(0.5, 0)
 practiceBtn.AutoButtonColor = false
 practiceBtn.BorderSizePixel = 0
@@ -466,8 +471,12 @@ end)
 local pillRow = Instance.new("Frame")
 pillRow.Name = "PillRow"
 pillRow.Size = UDim2.fromOffset(534, 44) -- 4 * 120 + 3 * 18 padding (SHOP added)
-pillRow.Position = UDim2.fromScale(0.5, 0.8)
-pillRow.AnchorPoint = Vector2.new(0.5, 0.5)
+-- Bottom-anchored with a 32px floor so the pill row never collides with
+-- the PLAY/PRACTICE pair, regardless of viewport height. The play group
+-- sits at viewport center; gear of room from the pill row scales with
+-- viewport rather than disappearing on short displays.
+pillRow.Position = UDim2.new(0.5, 0, 1, -32)
+pillRow.AnchorPoint = Vector2.new(0.5, 1)
 pillRow.BackgroundTransparency = 1
 pillRow.ZIndex = 10
 pillRow.Parent = screenGui
