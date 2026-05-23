@@ -695,7 +695,7 @@ end
 -- cream cup floor. Those get substituted with a dark warm grey so the
 -- ring stays visible. Saturated and dark pearls (brown / pink / green /
 -- caramel) keep their true color.
-local GHOST_FALLBACK_GREY = Color3.fromRGB(80, 60, 45)
+local GHOST_FALLBACK_GREY = Color3.fromRGB(150, 140, 128)
 local function ghostStrokeColor(color)
     local _h, s, v = Color3.toHSV(color)
     if v > 0.85 and s < 0.20 then
