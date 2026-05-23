@@ -128,6 +128,12 @@ function StateSync:wireRoom(room)
         end
     end)
     gs:subscribe("onMatchEnd", function(event)
+        -- Augment with room-scoped fields the GameState doesn't (and shouldn't)
+        -- know about. `difficulty` lets the client's MatchEnd panel show
+        -- "vs AI (easy)" / "vs AI (medium)" subtitles.
+        if room.aiBot and event.difficulty == nil then
+            event.difficulty = room.aiBot.difficulty
+        end
         for _, p in room.players do
             self._matchEndRemote:FireClient(p, event)
         end

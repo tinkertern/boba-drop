@@ -23,7 +23,7 @@ Events.Names = {
     GarbageIncoming = "GarbageIncoming", -- payload: { playerId, cubes = number, dropsInPlacements = number }
     GarbageApplied = "GarbageApplied", -- payload: { playerId, cubes = number, canceledByCounter = number, cellsDropped = [{ row, col }, ...] }
     RoundEnd = "RoundEnd",         -- payload: { winner, loser, reason, round, p1Score, p2Score }
-    MatchEnd = "MatchEnd",         -- payload: { winner, loser?, result = "win" | "practice_ended", mode = "versus" | "practice" | "ai", finalScores = { [pid] = number }, bestChain = { [pid] = number } } — in "ai" mode, winner / loser may be the bot userId "-1"
+    MatchEnd = "MatchEnd",         -- payload: { winner, loser?, result = "win" | "practice_ended", mode = "versus" | "practice" | "ai", difficulty? = "easy" | "medium" | "hard" | "pro", finalScores = { [pid] = number }, bestChain = { [pid] = number } } — in "ai" mode, winner / loser may be the bot userId "-1"; difficulty present only when mode == "ai"
 }
 
 return Events
