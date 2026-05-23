@@ -5,21 +5,22 @@
 -- Also disables Roblox's default PlayerControls while in_match so WASD doesn't
 -- also walk the player's avatar around (and trigger footstep sounds) in the
 -- background.
+--
+-- Bindings go through ContextActionService rather than UserInputService.
+-- The default Roblox camera scripts bind Left/Right arrows via CAS for
+-- camera orbit (and sink them), which was eating those arrows before
+-- UIS:InputBegan would fire — WASD passed through because they were not
+-- in the camera's binding list. Registering our own CAS bindings with
+-- Sink overrides the camera bindings at the same priority, so all five
+-- action keys reach the remotes.
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 
 local Events = require(ReplicatedStorage.Shared.Events)
 
--- Boba Drop is mouse/touch + keyboard hotkeys, no gamepad-style UI navigation
--- between Selectable elements. Roblox enables that nav by default, which lets
--- the system topbar (chat, leaderboard buttons) and any Selectable TextButton
--- capture arrow keys before they reach InputBegan handlers below. That broke
--- Left/Right arrow movement of the active piece while WASD still worked
--- (WASD is not part of the gamepad nav system). Turning nav off lets every
--- arrow press reach this script.
 GuiService.GuiNavigationEnabled = false
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
@@ -33,27 +34,48 @@ local rotateRemote = Remotes:WaitForChild(Events.Names.InputRotate, 30)
 local softDropRemote = Remotes:WaitForChild(Events.Names.InputSoftDrop, 30)
 local hardDropRemote = Remotes:WaitForChild(Events.Names.InputHardDrop, 30)
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.Left or input.KeyCode == Enum.KeyCode.A then
+local function moveLeft(_, inputState)
+    if inputState == Enum.UserInputState.Begin then
         moveRemote:FireServer({ direction = "left" })
-    elseif input.KeyCode == Enum.KeyCode.Right or input.KeyCode == Enum.KeyCode.D then
-        moveRemote:FireServer({ direction = "right" })
-    elseif input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.W then
-        -- Single rotation direction (clockwise), Tetris convention.
-        rotateRemote:FireServer({ direction = "cw" })
-    elseif input.KeyCode == Enum.KeyCode.Down or input.KeyCode == Enum.KeyCode.S then
-        softDropRemote:FireServer({ held = true })
-    elseif input.KeyCode == Enum.KeyCode.Space then
-        hardDropRemote:FireServer({})
     end
-end)
+    return Enum.ContextActionResult.Sink
+end
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Down or input.KeyCode == Enum.KeyCode.S then
+local function moveRight(_, inputState)
+    if inputState == Enum.UserInputState.Begin then
+        moveRemote:FireServer({ direction = "right" })
+    end
+    return Enum.ContextActionResult.Sink
+end
+
+local function rotate(_, inputState)
+    if inputState == Enum.UserInputState.Begin then
+        rotateRemote:FireServer({ direction = "cw" })
+    end
+    return Enum.ContextActionResult.Sink
+end
+
+local function softDrop(_, inputState)
+    if inputState == Enum.UserInputState.Begin then
+        softDropRemote:FireServer({ held = true })
+    elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
         softDropRemote:FireServer({ held = false })
     end
-end)
+    return Enum.ContextActionResult.Sink
+end
+
+local function hardDrop(_, inputState)
+    if inputState == Enum.UserInputState.Begin then
+        hardDropRemote:FireServer({})
+    end
+    return Enum.ContextActionResult.Sink
+end
+
+ContextActionService:BindAction("BobaDropMoveLeft",  moveLeft,  false, Enum.KeyCode.Left,  Enum.KeyCode.A)
+ContextActionService:BindAction("BobaDropMoveRight", moveRight, false, Enum.KeyCode.Right, Enum.KeyCode.D)
+ContextActionService:BindAction("BobaDropRotate",    rotate,    false, Enum.KeyCode.Up,    Enum.KeyCode.W)
+ContextActionService:BindAction("BobaDropSoftDrop",  softDrop,  false, Enum.KeyCode.Down,  Enum.KeyCode.S)
+ContextActionService:BindAction("BobaDropHardDrop",  hardDrop,  false, Enum.KeyCode.Space)
 
 -- Disable Roblox's default PlayerControls permanently. Boba Drop is a 2D UI
 -- experience; the avatar exists in Workspace but is never visible or relevant.
