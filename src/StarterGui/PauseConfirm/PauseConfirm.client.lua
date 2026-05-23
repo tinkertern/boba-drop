@@ -206,7 +206,20 @@ end
 
 local SLIDE_DURATION = 0.25
 
+-- Copy adapts to MatchMode. Versus = forfeit warning, practice = run-abandon.
+local function refreshCopy()
+    local matchMode = player:GetAttribute("MatchMode")
+    if matchMode == "practice" then
+        title.Text = "LEAVE RUN?"
+        body.Text = "Your progress this run will be lost."
+    else
+        title.Text = "LEAVE MATCH?"
+        body.Text = "Your opponent will win by forfeit."
+    end
+end
+
 local function openModal()
+    refreshCopy()
     scrim.Visible = true
     panel.Position = UDim2.fromScale(0.5, 1.2)
     TweenService:Create(
