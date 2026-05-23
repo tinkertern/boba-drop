@@ -30,9 +30,14 @@ function DisconnectHandler:onPlayerLeaving(player)
 
     if room.phase == "playing" then
         -- In-round disconnect: 10s grace period, then forfeit (versus) or close
-        -- the room (practice — no opponent to forfeit to).
+        -- the room (practice / ai — no real opponent to forfeit to).
+        --
+        -- For AI mode, even though forfeitRound would technically work (bot
+        -- "wins" the round), the MatchEnd FireClient would target a gone
+        -- player and the room would leak in postMatch. Close it directly,
+        -- mirroring practice — nobody's left to see the bot's victory panel.
         self._disconnectTasks[pid] = task.delay(Constants.DISCONNECT_GRACE, function()
-            if room.mode == "practice" then
+            if room.mode == "practice" or room.mode == "ai" then
                 self._roomManager:_closeRoom(room)
             elseif room.gameState and room.gameState:phase() == "playing" then
                 room.gameState:forfeitRound(tostring(pid), "disconnect")

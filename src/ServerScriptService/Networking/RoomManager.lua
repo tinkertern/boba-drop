@@ -7,8 +7,16 @@ local GameState = require(ReplicatedStorage.Shared.Logic.GameState)
 local Constants = require(ReplicatedStorage.Shared.Logic.Constants)
 local Events = require(ReplicatedStorage.Shared.Events)
 
+-- Sentinel userId for the AI bot in single-player-vs-AI rooms. Real Roblox
+-- UserIds are positive integers, so a negative string value can never collide.
+-- The bot has no Player Instance — anything that resolves Players:GetPlayerByUserId
+-- or iterates room.players will naturally skip it (room.players holds only real
+-- Player Instances; the bot is tracked via room.aiBot).
+local BOT_USERID = "-1"
+
 local RoomManager = {}
 RoomManager.__index = RoomManager
+RoomManager.BOT_USERID = BOT_USERID
 
 function RoomManager.new()
     local self = setmetatable({}, RoomManager)
@@ -79,6 +87,23 @@ function RoomManager:enterPractice(player)
     if self._playerRoom[player.UserId] then return end
     print("[RoomManager] " .. player.Name .. " entering practice (solo)")
     self:_startSoloRoom(player)
+end
+
+-- Single-player-vs-AI entry: bypass the queue, build a 2-player GameState
+-- (real + bot) so the standard versus garbage pipeline / topout routing all
+-- "just work" — the bot is just another userId, the only difference is that
+-- its inputs are server-driven (see Main.server's AI decision loop) and that
+-- it has no Player Instance for FireClient. Idempotent for the same reason
+-- enterPractice is (rapid PLAY taps shouldn't stack rooms).
+--
+-- Tonight only `easy` is wired; unknown / falsy difficulty values default to
+-- easy so a client that ships ahead of the tier rollout can't crash the route.
+function RoomManager:enterAi(player, difficulty)
+    if self._playerRoom[player.UserId] then return end
+    local validDifficulties = { easy = true, normal = true, hard = true, pro = true }
+    difficulty = (type(difficulty) == "string" and validDifficulties[difficulty]) and difficulty or "easy"
+    print("[RoomManager] " .. player.Name .. " entering AI (vs bot, " .. difficulty .. ")")
+    self:_startAiRoom(player, difficulty)
 end
 
 function RoomManager:leaveQueue(player)
@@ -157,6 +182,39 @@ function RoomManager:_startSoloRoom(player)
     print("[RoomManager] solo room started: " .. player.Name)
 end
 
+function RoomManager:_startAiRoom(player, difficulty)
+    local seed = math.random(1, 1000000)
+    -- 2-player GameState (real + bot) means we reuse the entire versus pipeline:
+    -- garbage routing, _otherPlayer, _endRound, MatchEnd. The bot is just another
+    -- userId from GameState's perspective; the AI decision loop in Main.server
+    -- drives its inputs via gs:applyInput(BOT_USERID, ...).
+    local gs = GameState.new({
+        players = { tostring(player.UserId), BOT_USERID },
+        seed = seed,
+        mode = "ai",
+    })
+    local room = {
+        players = { player }, -- only real Player Instances; bot lives in aiBot
+        gameState = gs,
+        phase = "playing",
+        mode = "ai",
+        difficulty = difficulty,
+        aiBot = { userId = BOT_USERID, difficulty = difficulty },
+    }
+    table.insert(self._rooms, room)
+    self._playerRoom[player.UserId] = room
+    self._rematchVotes[room] = {}
+    player:SetAttribute("GameState", "in_match")
+    -- MatchMode = "ai" so Producer's client UI swaps the MatchEnd header text
+    -- and opponent-board labeling. Sticky across rematches (see registerRematchVote).
+    player:SetAttribute("MatchMode", "ai")
+    -- Subscribers first so countdown + initial piece spawn (including the bot's)
+    -- reach their listeners — the AI decision loop subscribes via onRoomReady.
+    self:_fireRoomReady(room)
+    self:_runCountdownThenStart(gs)
+    print("[RoomManager] AI room started: " .. player.Name .. " vs bot (" .. difficulty .. ")")
+end
+
 function RoomManager:_runCountdownThenStart(gs)
     -- Broadcast the countdown end timestamp, wait the configured duration,
     -- then spawn pieces. Both clients animate 3-2-1-GO against the timestamp.
@@ -212,6 +270,13 @@ function RoomManager:requestLeave(player)
         -- Practice mode has no opponent to forfeit to, and forfeitRound would
         -- assert on _otherPlayer. Skip straight to _closeRoom — the player
         -- explicitly chose to quit, so no match-end panel is needed.
+        --
+        -- AI mode DOES forfeit (the bot is the "opponent" and "wins" by default).
+        -- forfeitRound's downstream is safe with no Player Instance for the bot:
+        -- _endRound stores winner = BOT_USERID, StateSync iterates room.players
+        -- (real-only) so the bot gets no FireClient. The real player sees the
+        -- MatchEnd panel land normally with winner = "-1" — Producer's client
+        -- reads event.mode == "ai" to render the "you lost to the bot" variant.
         if room.mode ~= "practice" and room.gameState and room.gameState:phase() == "playing" then
             room.gameState:forfeitRound(tostring(player.UserId), "leave")
         end
@@ -226,28 +291,36 @@ function RoomManager:registerRematchVote(player, accept)
     if not room or room.phase ~= "postMatch" then return end
     if accept then
         self._rematchVotes[room][player.UserId] = true
-        -- Practice mode: only one player exists. A single accept-vote restarts
-        -- the room immediately — no second-vote wait. Mirrors versus rematch
-        -- otherwise (new seed, new GameState, re-wire, countdown + startRound).
-        local soloRestart = (room.mode == "practice")
-        local versusBothAccepted = (room.mode ~= "practice")
+        -- Practice + AI: only one real player exists. A single accept-vote
+        -- restarts the room immediately — no second-vote wait. (The bot has no
+        -- Player Instance to vote with.) Versus still requires both votes.
+        local soloRestart = (room.mode == "practice" or room.mode == "ai")
+        local versusBothAccepted = (room.mode == "versus")
             and self._rematchVotes[room][room.players[1].UserId]
             and self._rematchVotes[room][room.players[2].UserId]
         if soloRestart or versusBothAccepted then
             print("[RoomManager] rematch accepted — restarting room (" .. room.mode .. ")")
             local seed = math.random(1, 1000000)
+            -- Build the GameState player-id list. For AI, keep the bot in the
+            -- list (room.aiBot.userId) so the new GameState is still 2-player.
             local playerIds = {}
             for _, p in room.players do
                 table.insert(playerIds, tostring(p.UserId))
             end
-            room.gameState = GameState.new({ players = playerIds, seed = seed })
+            if room.aiBot then
+                table.insert(playerIds, room.aiBot.userId)
+            end
+            -- Preserve the mode tag across rematches so MatchEnd payload's
+            -- `mode` field stays correct (matters for AI rematches in particular).
+            room.gameState = GameState.new({ players = playerIds, seed = seed, mode = room.mode })
             room.phase = "playing"
             self._rematchVotes[room] = {}
             for _, p in room.players do
                 if p and p.Parent then
                     p:SetAttribute("GameState", "in_match")
-                    -- MatchMode is sticky across rematches: a practice rematch
-                    -- stays practice, versus stays versus.
+                    -- MatchMode is sticky across rematches: practice stays
+                    -- practice, versus stays versus, ai stays ai (with the
+                    -- room.aiBot.difficulty preserved through the rematch).
                     p:SetAttribute("MatchMode", room.mode)
                 end
             end

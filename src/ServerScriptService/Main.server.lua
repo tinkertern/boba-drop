@@ -126,6 +126,11 @@ if Remotes then
             payload = (type(payload) == "table") and payload or {}
             if payload.mode == "practice" then
                 roomManager:enterPractice(player)
+            elseif payload.mode == "ai" then
+                -- Difficulty defaults to easy on unknown / falsy. RoomManager
+                -- re-validates so a malicious client can't smuggle a tier we
+                -- haven't tuned yet.
+                roomManager:enterAi(player, payload.difficulty)
             else
                 roomManager:enqueuePlayer(player)
             end
@@ -179,6 +184,14 @@ task.spawn(function()
                     if player and player.Parent and not roomManager:isPaused(player.UserId) then
                         room.gameState:applyInput(tostring(player.UserId), { type = "tick" })
                     end
+                end
+                -- AI bot has no Player Instance, so it's not in room.players.
+                -- Tick its piece in lockstep with the real player so gravity
+                -- still pulls it down — without this, the bot's piece would
+                -- only descend when the AI decision loop issued a hardDrop,
+                -- breaking the "piece never reaches lock" failsafe.
+                if room.aiBot then
+                    room.gameState:applyInput(room.aiBot.userId, { type = "tick" })
                 end
             end
         end
@@ -246,6 +259,97 @@ roomManager:onRoomReady(function(room)
         local player = findPlayerByUserId(event.playerId)
         if not player then return end
         disconnectHandler:clearAfkTimer(player)
+    end)
+end)
+
+-- ----- AI decision loop (easy tier) -----
+-- Server-authoritative bot inputs. Subscribes to onPieceSpawned on every AI
+-- room's GameState and, when the spawn is for the bot, schedules a sequence
+-- of inputs (reaction delay → optional rotations → random column move → hard
+-- drop). Spawn-driven (not timer-driven) so it naturally handles every piece:
+-- the initial round spawn, post-lock spawns, post-chain spawns, and post-
+-- garbage spawns all trigger the same code path.
+--
+-- Easy tier characteristics:
+--   - Reaction delay 400-700ms (feels like a slow human)
+--   - Random column 1..BOARD_WIDTH (no strategy / no chain-seeking)
+--   - Random orientation 0..3, sometimes skipped entirely (laziness model)
+--   - Small inter-input wait 80-150ms between each rotate / move
+--   - Always hard-drop at the end (no soft-drop nuance)
+--
+-- Safety:
+--   - Re-check gs:phase() == "playing" before each input. If the round ends
+--     mid-sequence (real player tops out, leaves, the bot's piece autolocks
+--     from gravity, etc.), the sequence silently exits on the next iteration.
+--   - Pull the active piece off gs:activePiece(BOT_USERID) before every move
+--     to handle the case where gravity locked the piece while we were waiting.
+local AI_REACTION_MIN = 0.4
+local AI_REACTION_MAX = 0.7
+local AI_INPUT_WAIT_MIN = 0.08
+local AI_INPUT_WAIT_MAX = 0.15
+
+local function aiRandRange(a, b)
+    return a + math.random() * (b - a)
+end
+
+roomManager:onRoomReady(function(room)
+    if not room.aiBot then return end
+    local gs = room.gameState
+    local botId = room.aiBot.userId
+    gs:subscribe("onPieceSpawned", function(event)
+        if event.playerId ~= botId then return end
+        -- Run the decision sequence in a spawned task so subscribers aren't
+        -- blocked by our task.wait calls.
+        task.spawn(function()
+            -- Capture gs identity at spawn time. If the room rematches mid-
+            -- sequence, room.gameState becomes a new instance — every check
+            -- against `gs` then short-circuits and this stale sequence exits.
+            local function alive()
+                if room.gameState ~= gs then return false end
+                if gs:phase() ~= "playing" then return false end
+                if not gs:activePiece(botId) then return false end
+                return true
+            end
+
+            task.wait(aiRandRange(AI_REACTION_MIN, AI_REACTION_MAX))
+            if not alive() then return end
+
+            -- Easy tier: pick a random target column + orientation. Sometimes
+            -- skip rotations entirely (~30% of the time) so the bot feels lazy
+            -- rather than meticulously planning every piece.
+            local targetCol = math.random(1, Constants.BOARD_WIDTH)
+            local targetRotation = (math.random() < 0.3) and 0 or math.random(0, 3)
+
+            -- Rotate to target orientation. CW rotation N times == orientation N.
+            for _ = 1, targetRotation do
+                if not alive() then return end
+                gs:applyInput(botId, { type = "rotate", direction = "cw" })
+                task.wait(aiRandRange(AI_INPUT_WAIT_MIN, AI_INPUT_WAIT_MAX))
+            end
+
+            -- Move to target column. Read pivotCol each iteration so we react
+            -- to walls (move input is a no-op when blocked, so we'd otherwise
+            -- spin forever). Cap iterations at BOARD_WIDTH * 2 as a safety net
+            -- against any state we didn't anticipate.
+            local maxIter = Constants.BOARD_WIDTH * 2
+            for _ = 1, maxIter do
+                if not alive() then return end
+                local piece = gs:activePiece(botId)
+                if not piece then return end
+                if piece.pivotCol == targetCol then break end
+                local direction = (piece.pivotCol < targetCol) and "right" or "left"
+                local before = piece.pivotCol
+                gs:applyInput(botId, { type = "move", direction = direction })
+                task.wait(aiRandRange(AI_INPUT_WAIT_MIN, AI_INPUT_WAIT_MAX))
+                -- If the move didn't change pivotCol (blocked by wall or stack),
+                -- stop trying — drop where we are.
+                local after = gs:activePiece(botId)
+                if not after or after.pivotCol == before then break end
+            end
+
+            if not alive() then return end
+            gs:applyInput(botId, { type = "hardDrop" })
+        end)
     end)
 end)
 

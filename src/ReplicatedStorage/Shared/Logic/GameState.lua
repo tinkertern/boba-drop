@@ -22,14 +22,18 @@ local function partnerOffset(orientation)
 end
 
 function GameState.new(ctx)
-    -- 1 player = practice mode (solo, no opponent). 2 players = versus.
+    -- 1 player = practice mode (solo, no opponent). 2 players = versus or ai.
     -- All routing that previously assumed exactly-2 is now guarded on _isSolo.
+    -- ctx.mode is optional; if omitted, defaults to "practice" for solo and
+    -- "versus" for 2-player. AI rooms pass mode = "ai" explicitly so the
+    -- MatchEnd payload's `mode` field reaches the client unchanged (the
+    -- client's MatchEnd.client.lua reads event.mode == "ai" to swap headers).
     assert(ctx.players and (#ctx.players == 1 or #ctx.players == 2), "GameState requires 1 or 2 players")
     assert(ctx.seed, "GameState requires seed")
     local self = setmetatable({}, GameState)
     self._players = ctx.players
     self._isSolo = (#ctx.players == 1)
-    self._mode = self._isSolo and "practice" or "versus"
+    self._mode = ctx.mode or (self._isSolo and "practice" or "versus")
     self._baseSeed = ctx.seed
     self._phase = "waiting"
     self._roundNumber = 0

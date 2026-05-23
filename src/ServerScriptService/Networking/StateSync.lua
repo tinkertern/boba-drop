@@ -40,9 +40,11 @@ end
 function StateSync:wireRoom(room)
     local gs = room.gameState
     gs:subscribe("onChainResolved", function(event)
-        local localPlayer = self:_findPlayer(event.playerId)
-        if not localPlayer then return end
-        -- Fire to both players, marking isLocal appropriately
+        -- Fire to every real player in the room. We previously gated on
+        -- _findPlayer(event.playerId) being non-nil, which broke AI mode: the
+        -- bot's chains have event.playerId = "-1" with no Player Instance, so
+        -- the real player would miss the opponent-board chain event. Iterate
+        -- room.players directly — that's already the real-only list.
         for _, p in room.players do
             self._chainRemote:FireClient(p, {
                 playerId = event.playerId,
