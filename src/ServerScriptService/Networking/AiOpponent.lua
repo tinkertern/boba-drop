@@ -28,10 +28,22 @@
 --           with a "../../" string require was reverted as un-tested-path in
 --           the Roblox runtime. `decide()` injects the real deps via Roblox
 --           instance requires; tests inject Lune-friendly string-require deps.
---
--- Pro tier is not implemented yet; it falls through to `_hardPolicy` so
--- RoomManager's validDifficulties guard ({easy/medium/hard/pro = true})
--- doesn't reach a nil policy.
+--   - pro: hard + 2-piece lookahead + chain-setup heuristic. For each candidate
+--          placement of the CURRENT piece, also peek at the next queued piece
+--          and evaluate its best possible response. Score combines current
+--          placement's chain bonus + next placement's chain bonus (discounted
+--          by PRO_NEXT_CHAIN_DISCOUNT for uncertainty) + a setup bonus that
+--          rewards leaving adjacent same-color pairs on the board (potential
+--          chains 2 turns out). 150-200ms reaction, no noise budget, fully
+--          deterministic tiebreaks (lowest col first, then lowest orientation)
+--          so the bot feels precise and machine-like vs hard's slight variance.
+--          To keep compute bounded, only the top PRO_LOOKAHEAD_TOPK current
+--          placements (ranked by single-piece score) get the deep next-piece
+--          lookahead. Worst-case: TOPK * 22 next-piece simulations + 22 current
+--          base-score sims = ~200 chain-resolve calls per decision. decide()
+--          uses a compute-then-wait pattern so the reaction window absorbs the
+--          computation latency. This is "pro-flavored" — measurably tougher
+--          than hard, but not research-grade tree search (deferred to v1.1).
 
 -- Board geometry inlined here. The Logic modules use string requires for sibling
 -- modules within ReplicatedStorage/Shared/Logic/, but going *across* services
@@ -54,6 +66,8 @@ AiOpponent.MEDIUM_REACTION_MIN = 0.3
 AiOpponent.MEDIUM_REACTION_MAX = 0.5
 AiOpponent.HARD_REACTION_MIN = 0.2
 AiOpponent.HARD_REACTION_MAX = 0.3
+AiOpponent.PRO_REACTION_MIN = 0.15
+AiOpponent.PRO_REACTION_MAX = 0.20
 AiOpponent.INPUT_WAIT_MIN = 0.08
 AiOpponent.INPUT_WAIT_MAX = 0.15
 
@@ -63,6 +77,10 @@ AiOpponent.MEDIUM_NOISE_RATE = 0.10
 -- Hard doesn't get a noise budget — the whole point of the tier is that it
 -- exploits chains reliably. Mistakes only come from short-horizon planning.
 AiOpponent.HARD_NOISE_RATE = 0.0
+-- Pro: zero noise, fully deterministic. Tiebreaks are positional (lowest col,
+-- then lowest rotation) instead of random, which gives the bot a precise,
+-- thinking-machine feel vs hard's slight human-style variance.
+AiOpponent.PRO_NOISE_RATE = 0.0
 
 -- Chain lookahead bonuses for hard tier (subtracted from score; bigger =
 -- stronger preference). The per-link bonus is sized so a single chain link
@@ -72,6 +90,20 @@ AiOpponent.HARD_NOISE_RATE = 0.0
 -- options so wider clears beat narrower ones.
 AiOpponent.HARD_CHAIN_BONUS_PER_LINK = 50
 AiOpponent.HARD_POP_BONUS_PER_CELL = 5
+
+-- Pro lookahead bonuses (subtracted from score; bigger = stronger preference).
+-- Chain bonus matches hard so chains-now still dominate. Next-piece chain bonus
+-- is the same per-link rate scaled by PRO_NEXT_CHAIN_DISCOUNT (uncertainty: we
+-- don't know which orientation the player would force on us in a real match).
+-- Setup bonus (per adjacent same-color pair left on the board) is intentionally
+-- small — it's a hint that a third matching piece *could* chain next turn, not
+-- a guarantee. Should never outweigh an actual chain bonus.
+AiOpponent.PRO_LOOKAHEAD_DEPTH = 1 -- pieces ahead to look (1 = current + next)
+AiOpponent.PRO_LOOKAHEAD_TOPK = 8 -- only deep-search the top K current candidates
+AiOpponent.PRO_CHAIN_BONUS_PER_LINK = 50
+AiOpponent.PRO_POP_BONUS_PER_CELL = 5
+AiOpponent.PRO_NEXT_CHAIN_DISCOUNT = 0.5 -- next-piece chain bonus weighted at half
+AiOpponent.PRO_SETUP_BONUS_PER_PAIR = 8 -- per adjacent same-color pair on post-placement board
 
 -- Score weights for medium policy. Lower = better. Exported as a table so
 -- tests can reason about / override them.
@@ -377,6 +409,35 @@ local function simulatePlacement(clonedBoard, landing, aColor, bColor)
 end
 AiOpponent._simulatePlacement = simulatePlacement -- exposed for tests
 
+-- Count unordered pairs of orthogonally adjacent cells that share a color.
+-- Each pair is counted once (we only check the up + right neighbour of every
+-- cell, never down + left, so (1,1)-(1,2) and (1,2)-(1,1) don't double-count).
+-- "Garbage" cells are excluded — they can't participate in matches, so a pair
+-- of Garbage adjacents isn't a setup. Used by the pro tier as a heuristic for
+-- "this placement leaves the board with potential 2-turns-out chains".
+local function countAdjacentSameColorPairs(board)
+    local pairs_count = 0
+    for r = 1, board.height do
+        for c = 1, board.width do
+            local cell = board.cells[r] and board.cells[r][c]
+            if cell ~= nil and cell ~= "Garbage" then
+                -- Right neighbour
+                local right = (c + 1 <= board.width) and board.cells[r][c + 1] or nil
+                if right == cell then
+                    pairs_count += 1
+                end
+                -- Up neighbour
+                local up = (r + 1 <= board.height) and board.cells[r + 1] and board.cells[r + 1][c] or nil
+                if up == cell then
+                    pairs_count += 1
+                end
+            end
+        end
+    end
+    return pairs_count
+end
+AiOpponent._countAdjacentSameColorPairs = countAdjacentSameColorPairs -- exposed for tests
+
 -- Hard policy: enumerate candidates, score with medium scoring, simulate the
 -- placement, and subtract a large chain bonus. Highest "goodness" wins
 -- (equivalent to lowest score after the chain bonus is subtracted).
@@ -450,6 +511,178 @@ function AiOpponent._hardPolicy(gs, playerId, rng, deps)
     return bestCandidates[pickIndex]
 end
 
+-- Pro: 2-piece lookahead + chain-setup heuristic ----------------------------
+--
+-- Algorithm:
+--   Phase 1 — enumerate all (col, rotation) for the CURRENT piece. For each,
+--             predict landing, score with medium scoring, and simulate the
+--             placement on a cloned board. Resolve chains; record post-chain
+--             board snapshot + chain bonus. Skip topout placements.
+--   Phase 2 — sort phase-1 candidates by their phase-1 score (best first) and
+--             keep only the top K. This is the pruning step that keeps the
+--             ~22*22 = 484 worst-case simulation count bounded — only K*22 of
+--             those simulations actually run.
+--   Phase 3 — for each surviving current candidate, peek at the next queued
+--             piece and enumerate (col, rotation) for IT on the post-chain
+--             clone. Take the best (lowest score) next-piece chain bonus,
+--             weighted by PRO_NEXT_CHAIN_DISCOUNT (uncertainty). Also compute
+--             the setup bonus on the post-chain board (adjacent same-color
+--             pair count * PRO_SETUP_BONUS_PER_PAIR).
+--   Phase 4 — combined score = phase-1 score + (-) discounted-next-chain-bonus
+--             + (-) setup-bonus. Pick the LOWEST score. Tiebreak is positional:
+--             since we iterate col 1..6 then rotation 0..3 and use strict `<`,
+--             ties resolve to lowest col first, then lowest rotation. No rng.
+--
+-- Perf approach: combination of pruning (top-K = 8 by phase-1 score) AND the
+-- decide()-level compute-then-wait pattern (reaction window absorbs the
+-- compute). Worst case is ~22 + 8*22 = ~198 chain-resolve calls per decision,
+-- well within the 150-200ms reaction budget on a Roblox server.
+--
+-- deps: { ChainResolver, cloneBoardCells, simulatePlacement,
+--         [countAdjacentSameColorPairs] }. The last is optional and falls
+--         back to the module-level helper if missing (so existing callers
+--         don't have to update their deps tables).
+function AiOpponent._proPolicy(gs, playerId, rng, deps)
+    rng = rng or math.random
+    if not deps or not deps.ChainResolver or not deps.cloneBoardCells or not deps.simulatePlacement then
+        -- Defensive: fall back to hard (which has its own deps guard). decide()
+        -- always wires deps, so this only triggers if a caller (test or
+        -- future code path) misuses the policy.
+        return AiOpponent._hardPolicy(gs, playerId, rng, deps)
+    end
+    local countPairs = deps.countAdjacentSameColorPairs or countAdjacentSameColorPairs
+
+    -- Pro: no noise budget. Guard kept for symmetry with hard, in case we ever
+    -- want to dial it up for tuning.
+    if AiOpponent.PRO_NOISE_RATE > 0 and rng() < AiOpponent.PRO_NOISE_RATE then
+        return AiOpponent._easyPolicy(gs, playerId, rng)
+    end
+
+    local board = gs:boardFor(playerId)
+    local piece = gs:activePiece(playerId)
+    if not board or not piece then
+        return AiOpponent._hardPolicy(gs, playerId, rng, deps)
+    end
+
+    local heights = columnHeights(board)
+    local boardWidth = Constants.BOARD_WIDTH
+
+    -- Phase 1: enumerate current-piece candidates, score + simulate + resolve.
+    -- Stash post-chain clone alongside score so Phase 3 doesn't re-simulate.
+    local phase1 = {} -- list of { col, rotation, score, postChainBoard }
+    for col = 1, boardWidth do
+        for rotation = 0, 3 do
+            local landing = predictLanding(heights, col, rotation, boardWidth)
+            if landing then
+                local baseScore = scorePlacement(heights, landing, board, piece.a, piece.b, AiOpponent.MEDIUM_WEIGHTS)
+                if baseScore ~= math.huge then
+                    local clonedBoard = deps.cloneBoardCells(board)
+                    deps.simulatePlacement(clonedBoard, landing, piece.a, piece.b)
+                    local result = deps.ChainResolver.resolve(clonedBoard)
+                    local score = baseScore
+                    if result.chainLength > 0 then
+                        score -= AiOpponent.PRO_CHAIN_BONUS_PER_LINK * result.chainLength
+                        score -= AiOpponent.PRO_POP_BONUS_PER_CELL * result.totalPopped
+                    end
+                    -- Setup bonus: adjacent same-color pairs left on the
+                    -- post-chain board. This is the "potential 2-turns-out
+                    -- chain" hint. Bonus is small so it never overrides a
+                    -- real chain.
+                    local pairCount = countPairs(clonedBoard)
+                    score -= AiOpponent.PRO_SETUP_BONUS_PER_PAIR * pairCount
+
+                    table.insert(phase1, {
+                        col = col,
+                        rotation = rotation,
+                        score = score,
+                        postChainBoard = clonedBoard,
+                    })
+                end
+            end
+        end
+    end
+
+    if #phase1 == 0 then
+        -- Every placement tops out. Fall back to hard (which itself falls
+        -- back to medium) so the bot still plays the least-bad option.
+        return AiOpponent._hardPolicy(gs, playerId, rng, deps)
+    end
+
+    -- Phase 2: prune to top-K by phase-1 score. Stable-sort: ties keep their
+    -- original (col, rotation) order, which preserves our positional tiebreak.
+    table.sort(phase1, function(a, b)
+        if a.score ~= b.score then return a.score < b.score end
+        if a.col ~= b.col then return a.col < b.col end
+        return a.rotation < b.rotation
+    end)
+    local topK = AiOpponent.PRO_LOOKAHEAD_TOPK
+    if #phase1 < topK then topK = #phase1 end
+
+    -- Phase 3: peek at next piece and evaluate its best response per surviving
+    -- current candidate. If no next piece is available (queue empty — shouldn't
+    -- happen in normal play but defend), the discounted-next bonus is 0 and
+    -- we effectively fall back to phase-1 scoring + setup bonus.
+    local nextPieces = board:peek(1)
+    local nextPiece = nextPieces and nextPieces[1]
+
+    local bestCombinedScore = math.huge
+    local bestPick = nil
+
+    for i = 1, topK do
+        local candidate = phase1[i]
+        local nextChainBonus = 0
+
+        if nextPiece then
+            local postHeights = columnHeights(candidate.postChainBoard)
+            -- Find the best (lowest) chain-only score for the next piece on
+            -- the post-current board. We only care about the chain bonus
+            -- delta here — base-scoring the next piece doesn't help us choose
+            -- among CURRENT placements (the next piece's pile-shape concerns
+            -- are 1 turn further out and dominated by our current shape).
+            local bestNextChainBonus = 0
+            for nc = 1, boardWidth do
+                for nr = 0, 3 do
+                    local nextLanding = predictLanding(postHeights, nc, nr, boardWidth)
+                    if nextLanding then
+                        -- Topout check on the post-chain board's geometry.
+                        -- Use scorePlacement just for the topout guard; we
+                        -- ignore the returned shape score.
+                        local nextBase = scorePlacement(postHeights, nextLanding, candidate.postChainBoard,
+                            nextPiece.a, nextPiece.b, AiOpponent.MEDIUM_WEIGHTS)
+                        if nextBase ~= math.huge then
+                            local nextClone = deps.cloneBoardCells(candidate.postChainBoard)
+                            deps.simulatePlacement(nextClone, nextLanding, nextPiece.a, nextPiece.b)
+                            local nextResult = deps.ChainResolver.resolve(nextClone)
+                            if nextResult.chainLength > 0 then
+                                local thisBonus =
+                                    AiOpponent.PRO_CHAIN_BONUS_PER_LINK * nextResult.chainLength
+                                    + AiOpponent.PRO_POP_BONUS_PER_CELL * nextResult.totalPopped
+                                if thisBonus > bestNextChainBonus then
+                                    bestNextChainBonus = thisBonus
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            nextChainBonus = bestNextChainBonus * AiOpponent.PRO_NEXT_CHAIN_DISCOUNT
+        end
+
+        local combined = candidate.score - nextChainBonus
+        -- Phase 4 tiebreak: strict `<` keeps the FIRST tied candidate, which
+        -- (post-sort) is the lowest col then lowest rotation. Deterministic.
+        if combined < bestCombinedScore then
+            bestCombinedScore = combined
+            bestPick = candidate
+        end
+    end
+
+    if not bestPick then
+        return AiOpponent._hardPolicy(gs, playerId, rng, deps)
+    end
+    return { col = bestPick.col, rotation = bestPick.rotation }
+end
+
 -- Resolve the policy function for a difficulty string. Unknown difficulties
 -- fall through to medium (callers should already have validated, but defend).
 function AiOpponent._policyFor(difficulty)
@@ -457,12 +690,10 @@ function AiOpponent._policyFor(difficulty)
         return AiOpponent._easyPolicy, AiOpponent.EASY_REACTION_MIN, AiOpponent.EASY_REACTION_MAX
     elseif difficulty == "hard" then
         return AiOpponent._hardPolicy, AiOpponent.HARD_REACTION_MIN, AiOpponent.HARD_REACTION_MAX
+    elseif difficulty == "pro" then
+        return AiOpponent._proPolicy, AiOpponent.PRO_REACTION_MIN, AiOpponent.PRO_REACTION_MAX
     else
-        -- normal/medium use medium; pro falls through to hard (closest tier
-        -- until the dedicated pro policy ships).
-        if difficulty == "pro" then
-            return AiOpponent._hardPolicy, AiOpponent.HARD_REACTION_MIN, AiOpponent.HARD_REACTION_MAX
-        end
+        -- normal/medium and any unknown difficulty use medium.
         return AiOpponent._mediumPolicy, AiOpponent.MEDIUM_REACTION_MIN, AiOpponent.MEDIUM_REACTION_MAX
     end
 end
@@ -502,25 +733,56 @@ function AiOpponent.decide(gs, room, event)
         return true
     end
 
-    task.wait(randRange(reactionMin, reactionMax))
-    if not alive() then return end
-
-    -- Build deps for policies that need them (hard tier). Cheap to construct;
-    -- the requires are cached after the first call. Easy/medium ignore the
-    -- 4th arg, so passing the deps unconditionally is safe.
+    -- Build deps for policies that need them (hard + pro tiers). Cheap to
+    -- construct; the requires are cached after the first call. Easy/medium
+    -- ignore the 4th arg, so passing the deps unconditionally is safe.
     local deps = nil
-    if policy == AiOpponent._hardPolicy then
+    if policy == AiOpponent._hardPolicy or policy == AiOpponent._proPolicy then
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local ChainResolver = require(ReplicatedStorage.Shared.Logic.ChainResolver)
         deps = {
             ChainResolver = ChainResolver,
             cloneBoardCells = AiOpponent._cloneBoardCells,
             simulatePlacement = AiOpponent._simulatePlacement,
+            countAdjacentSameColorPairs = AiOpponent._countAdjacentSameColorPairs,
         }
     end
 
-    local target = policy(capturedGs, botId, math.random, deps)
+    -- Reaction timing strategy:
+    --   - easy / medium / hard: wait first, then compute. Compute is fast
+    --     (single-piece score sweep, ~22 simulations max for hard) so it
+    --     doesn't blow the reaction budget.
+    --   - pro: compute FIRST, then wait the remainder of the reaction window.
+    --     Pro's 2-piece lookahead can take 50-200ms; running it inside the
+    --     reaction window means the bot still feels like it's "thinking" for
+    --     the expected 150-200ms rather than 150-200ms + compute lag. If
+    --     compute exceeds the reaction max, we skip the wait entirely and
+    --     warn so we can tune topK or budgets if it becomes a pattern.
+    local reactionTarget = randRange(reactionMin, reactionMax)
+    local target
+    if policy == AiOpponent._proPolicy then
+        local computeStart = os.clock()
+        target = policy(capturedGs, botId, math.random, deps)
+        local computeElapsed = os.clock() - computeStart
+        if not alive() then return end
+        local remaining = reactionTarget - computeElapsed
+        if remaining > 0 then
+            task.wait(remaining)
+        elseif computeElapsed > AiOpponent.PRO_REACTION_MAX then
+            -- Compute blew the reaction window. Not fatal — the bot just
+            -- reacts faster than designed — but a signal that topK/depth
+            -- needs tuning. warn() is captured by Roblox's output console.
+            warn(string.format(
+                "[AiOpponent] pro policy compute %.0fms exceeded reaction max %.0fms",
+                computeElapsed * 1000, AiOpponent.PRO_REACTION_MAX * 1000))
+        end
+    else
+        task.wait(reactionTarget)
+        if not alive() then return end
+        target = policy(capturedGs, botId, math.random, deps)
+    end
     if not target then return end -- policy bailed; nothing safe to do
+    if not alive() then return end
 
     -- Rotate to target orientation. CW rotation N times == orientation N.
     for _ = 1, target.rotation do

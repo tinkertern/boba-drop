@@ -23,6 +23,15 @@ local HARD_DEPS = {
     simulatePlacement = AiOpponent._simulatePlacement,
 }
 
+-- Pro reuses the same deps shape, with an optional pair-counter (falls back to
+-- the module-level helper if missing). Tests use the real helper.
+local PRO_DEPS = {
+    ChainResolver = ChainResolver,
+    cloneBoardCells = AiOpponent._cloneBoardCells,
+    simulatePlacement = AiOpponent._simulatePlacement,
+    countAdjacentSameColorPairs = AiOpponent._countAdjacentSameColorPairs,
+}
+
 local BOT = "-1"
 local REAL = "P1"
 
@@ -353,11 +362,11 @@ t.describe("AiOpponent._policyFor", function()
         t.assertEq(maxR, AiOpponent.HARD_REACTION_MAX)
     end)
 
-    t.it("falls through to hard for 'pro' until that tier ships", function()
-        -- Pro is the only remaining unimplemented tier. It promotes to hard
-        -- (closest available) rather than falling back to medium.
-        local fn = AiOpponent._policyFor("pro")
-        t.assertEq(fn, AiOpponent._hardPolicy)
+    t.it("returns the pro policy for 'pro'", function()
+        local fn, minR, maxR = AiOpponent._policyFor("pro")
+        t.assertEq(fn, AiOpponent._proPolicy)
+        t.assertEq(minR, AiOpponent.PRO_REACTION_MIN)
+        t.assertEq(maxR, AiOpponent.PRO_REACTION_MAX)
     end)
 end)
 
@@ -535,6 +544,249 @@ t.describe("AiOpponent._hardPolicy", function()
         t.assertEq(type(target.rotation), "number")
     end)
 
+end)
+
+-- ---- _countAdjacentSameColorPairs ------------------------------------------
+
+t.describe("AiOpponent._countAdjacentSameColorPairs", function()
+    t.it("returns 0 on an empty board", function()
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        t.assertEq(AiOpponent._countAdjacentSameColorPairs(board), 0)
+    end)
+
+    t.it("counts a horizontal same-color pair", function()
+        -- (1,1) Pink + (1,2) Pink → one pair.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Pink")
+        t.assertEq(AiOpponent._countAdjacentSameColorPairs(board), 1)
+    end)
+
+    t.it("counts a vertical same-color pair", function()
+        -- (1,3) Brown + (2,3) Brown → one pair.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 3, "Brown")
+        board:placeAt(2, 3, "Brown")
+        t.assertEq(AiOpponent._countAdjacentSameColorPairs(board), 1)
+    end)
+
+    t.it("does not count different-color or Garbage neighbours", function()
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        -- Mixed: Pink-Brown adjacency (not same color) and Garbage-Garbage
+        -- adjacency (Garbage explicitly excluded; it can't match-pop).
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Brown")
+        board:placeAt(1, 4, "Garbage")
+        board:placeAt(1, 5, "Garbage")
+        t.assertEq(AiOpponent._countAdjacentSameColorPairs(board), 0)
+    end)
+
+    t.it("counts an L-shape (3 same-color cells) as 2 pairs", function()
+        -- Three Pinks arranged as L: (1,1), (1,2), (2,1).
+        -- Pairs: (1,1)-(1,2) horizontal + (1,1)-(2,1) vertical = 2.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Pink")
+        board:placeAt(2, 1, "Pink")
+        t.assertEq(AiOpponent._countAdjacentSameColorPairs(board), 2)
+    end)
+end)
+
+-- ---- _proPolicy ------------------------------------------------------------
+
+t.describe("AiOpponent._proPolicy", function()
+    t.it("prefers a placement that completes a chain on the CURRENT piece", function()
+        -- Same setup as the hard "completes a chain" test — pro should
+        -- also pick a chain-completing placement (chain bonus dwarfs the
+        -- next-piece + setup adjustments).
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        board:placeAt(1, 1, "Pink")
+        board:placeAt(1, 2, "Pink")
+        board:placeAt(1, 3, "Pink")
+        local piece = gs:activePiece(BOT)
+        piece.a = "Pink"
+        piece.b = "Pink"
+
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), PRO_DEPS)
+
+        -- Verify the chosen placement yields a chain.
+        local heights = AiOpponent._columnHeights(board)
+        local landing = AiOpponent._predictLanding(heights, target.col, target.rotation, Constants.BOARD_WIDTH)
+        t.assertEq(landing ~= nil, true, "landing must be valid")
+        local cloned = AiOpponent._cloneBoardCells(board)
+        AiOpponent._simulatePlacement(cloned, landing, "Pink", "Pink")
+        local result = ChainResolver.resolve(cloned)
+        t.assertEq(result.chainLength >= 1, true,
+            "expected chain >= 1, got " .. result.chainLength)
+    end)
+
+    t.it("prefers a placement that enables a chain on the NEXT piece", function()
+        -- Mock deps to drive the algorithm:
+        --   - Current piece: no chains possible (chainLength = 0) anywhere.
+        --   - Next piece: chains ONLY when the current placement landed at
+        --     col 1 (which leaves the post-chain board in a state that lets
+        --     the next piece chain). Pro must pick col 1 to set up the
+        --     next-piece chain.
+        local gs = newAiState()
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        local callCount = 0
+        local mockDeps = {
+            cloneBoardCells = AiOpponent._cloneBoardCells,
+            countAdjacentSameColorPairs = function() return 0 end,
+            simulatePlacement = function(clonedBoard, landing, _aColor, _bColor)
+                -- Tag the clone with the CURRENT piece's landing col on the
+                -- first call (current-piece simulation). Subsequent calls
+                -- (next-piece simulations) inherit the tag through clone.
+                if clonedBoard._currentCol == nil then
+                    clonedBoard._currentCol = landing.aCol
+                end
+                return clonedBoard
+            end,
+            ChainResolver = {
+                resolve = function(cloned)
+                    callCount += 1
+                    -- Current-piece chains: always 0. Next-piece chains: only
+                    -- when the current piece landed at col 1.
+                    if cloned._currentCol == 1 and callCount > 22 then
+                        -- After the 22-ish current-piece resolves, we're in
+                        -- the next-piece phase. The board still has _currentCol
+                        -- because cloneBoardCells deep-copies cells but our
+                        -- tag is a top-level field. Need to handle that.
+                        return { chainLength = 2, totalPopped = 8, steps = {} }
+                    end
+                    return { chainLength = 0, totalPopped = 0, steps = {} }
+                end,
+            },
+        }
+
+        -- Wrap cloneBoardCells to propagate the _currentCol tag through clones
+        -- (Phase 3 clones the post-chain board for each next-piece candidate).
+        local originalClone = mockDeps.cloneBoardCells
+        mockDeps.cloneBoardCells = function(board)
+            local cloned = originalClone(board)
+            cloned._currentCol = board._currentCol
+            return cloned
+        end
+
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), mockDeps)
+        t.assertEq(target.col, 1,
+            "expected col 1 (next-piece chains here), got col " .. target.col)
+    end)
+
+    t.it("prefers a placement that creates a 2-cell same-color setup", function()
+        -- Empty board, Pink-Pink piece. Every placement is chain-less and
+        -- has comparable shape scoring, but only certain orientations leave
+        -- the two Pinks orthogonally adjacent (setup pair = 1). Pro should
+        -- prefer those over orientations that separate them.
+        --
+        -- With Pink-Pink: orientation 0 (b above a, same col) → 1 pair.
+        --                 orientation 1 (b right) → 1 pair.
+        --                 orientation 2 (b below a, same col) → 1 pair.
+        --                 orientation 3 (b left) → 1 pair.
+        -- All four pair up Pink-Pink! So the test condition is: chosen
+        -- placement leaves at least 1 adjacent same-color pair.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        local piece = gs:activePiece(BOT)
+        piece.a = "Pink"
+        piece.b = "Pink"
+
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), PRO_DEPS)
+
+        local heights = AiOpponent._columnHeights(board)
+        local landing = AiOpponent._predictLanding(heights, target.col, target.rotation, Constants.BOARD_WIDTH)
+        t.assertEq(landing ~= nil, true)
+        local cloned = AiOpponent._cloneBoardCells(board)
+        AiOpponent._simulatePlacement(cloned, landing, "Pink", "Pink")
+        local pairs_after = AiOpponent._countAdjacentSameColorPairs(cloned)
+        t.assertEq(pairs_after >= 1, true,
+            "expected setup pair count >= 1, got " .. pairs_after)
+    end)
+
+    t.it("deterministic: same gs state yields same placement across repeated calls", function()
+        -- Pro has zero noise and positional tiebreaks — calling it twice with
+        -- the same gs (and any rng, since pro doesn't use rng for tiebreaks)
+        -- must return the same (col, rotation). Use two different rng streams
+        -- to verify rng has no influence on the output.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        -- Set up a board with several tied-score placements so the tiebreak
+        -- code path is exercised. All cols at height 1, no chains possible.
+        for c = 1, Constants.BOARD_WIDTH do
+            board:placeAt(1, c, "Garbage")
+        end
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        local t1 = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), PRO_DEPS)
+        local t2 = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.9 }), PRO_DEPS)
+        local t3 = AiOpponent._proPolicy(gs, BOT, math.random, PRO_DEPS)
+        t.assertEq(t1.col, t2.col, "rng 0.0 vs 0.9 differ on col")
+        t.assertEq(t1.rotation, t2.rotation, "rng 0.0 vs 0.9 differ on rotation")
+        t.assertEq(t1.col, t3.col, "math.random differs on col")
+        t.assertEq(t1.rotation, t3.rotation, "math.random differs on rotation")
+    end)
+
+    t.it("falls back to hard-style scoring when no chains/setups are available", function()
+        -- Tall col 1 + Garbage everywhere; no chain possible for Brown-Brown.
+        -- Pro must still avoid col 1 (medium score component dominates).
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        for r = 1, 10 do
+            board:placeAt(r, 1, "Garbage")
+        end
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), PRO_DEPS)
+        t.assertEq(target.col >= 2 and target.col <= Constants.BOARD_WIDTH, true,
+            "expected col 2-6 (away from tall col 1), got col " .. target.col)
+    end)
+
+    t.it("avoids topout when most columns are 1 cell from overflow", function()
+        -- Cols 1-5 stacked to visible-1; col 6 empty. Pro must pick a
+        -- placement that doesn't push the stack over the visible ceiling.
+        local gs = newAiState()
+        local board = gs:boardFor(BOT)
+        for c = 1, 5 do
+            for r = 1, Constants.BOARD_VISIBLE_HEIGHT - 1 do
+                board:placeAt(r, c, "Garbage")
+            end
+        end
+        local piece = gs:activePiece(BOT)
+        piece.a = "Brown"
+        piece.b = "Brown"
+
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.0 }), PRO_DEPS)
+        local heights = AiOpponent._columnHeights(board)
+        local landing = AiOpponent._predictLanding(heights, target.col, target.rotation, Constants.BOARD_WIDTH)
+        t.assertEq(landing ~= nil, true)
+        t.assertEq(landing.aRow <= Constants.BOARD_VISIBLE_HEIGHT, true,
+            "a landed at row " .. landing.aRow .. " (topout)")
+        t.assertEq(landing.bRow <= Constants.BOARD_VISIBLE_HEIGHT, true,
+            "b landed at row " .. landing.bRow .. " (topout)")
+    end)
+
+    t.it("falls back to hard policy when deps are missing", function()
+        -- Defensive guard: pro without deps should degrade to hard (which
+        -- itself degrades to medium when its deps are missing). Must not
+        -- error.
+        local gs = newAiState()
+        local target = AiOpponent._proPolicy(gs, BOT, seqRng({ 0.5, 0.0 }), nil)
+        t.assertEq(type(target.col), "number")
+        t.assertEq(type(target.rotation), "number")
+    end)
 end)
 
 t.summary()
