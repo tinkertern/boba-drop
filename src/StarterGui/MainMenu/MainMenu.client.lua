@@ -412,7 +412,7 @@ end)
 
 local pillRow = Instance.new("Frame")
 pillRow.Name = "PillRow"
-pillRow.Size = UDim2.fromOffset(396, 44) -- 3 * 120 + 2 * 18 padding
+pillRow.Size = UDim2.fromOffset(534, 44) -- 4 * 120 + 3 * 18 padding (SHOP added)
 pillRow.Position = UDim2.fromScale(0.5, 0.8)
 pillRow.AnchorPoint = Vector2.new(0.5, 0.5)
 pillRow.BackgroundTransparency = 1
@@ -468,20 +468,26 @@ local function makePill(name, text, textSize, layoutOrder, onActivate)
 end
 
 makePill("ThemesBtn", "THEMES", UIConstants.TextSizes.Body, 1, function()
-    -- THEMES now opens the inventory (owned + locked themes side-by-side).
-    -- Locked cards in the inventory bounce the player into the Shop.
+    -- THEMES opens the inventory of owned + locked themes. The Shop pill
+    -- alongside is the unlock path; locked cards no longer route to it.
     if _G.BobaDropThemes and _G.BobaDropThemes.open then
         _G.BobaDropThemes.open()
     end
 end)
 
-makePill("SettingsBtn", "\u{2699}", 24, 2, function()
+makePill("ShopBtn", "SHOP", UIConstants.TextSizes.Body, 2, function()
+    if _G.BobaDropShop and _G.BobaDropShop.open then
+        _G.BobaDropShop.open()
+    end
+end)
+
+makePill("SettingsBtn", "\u{2699}", 24, 3, function()
     if _G.BobaDropSettings and _G.BobaDropSettings.open then
         _G.BobaDropSettings.open()
     end
 end)
 
-makePill("HowToBtn", "?", 28, 3, function()
+makePill("HowToBtn", "?", 28, 4, function()
     if _G.BobaDropHowToPlay and _G.BobaDropHowToPlay.open then
         _G.BobaDropHowToPlay.open()
     end

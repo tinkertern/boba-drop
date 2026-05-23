@@ -71,20 +71,28 @@ scrim.BorderSizePixel = 0
 scrim.Visible = false
 scrim.Parent = gui
 
-local PANEL_SIZE = UDim2.fromOffset(580, 500)
+-- Panel height is viewport-relative (viewport_height - 48px) clamped to a
+-- comfortable range. On short viewports the inner ScrollingFrame takes
+-- over so the grid stays reachable; on tall viewports the panel caps
+-- out instead of growing into wasted whitespace.
 local PANEL_ONSCREEN = UDim2.fromScale(0.5, 0.5)
 local PANEL_OFFSCREEN = UDim2.new(0.5, 0, 0.55, 0)
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.Active = true
-panel.Size = PANEL_SIZE
+panel.Size = UDim2.new(0, 580, 1, -48)
 panel.Position = PANEL_OFFSCREEN
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.BackgroundColor3 = UIConstants.Colors.Cream
 panel.BorderSizePixel = 0
 panel.Visible = false
 panel.Parent = gui
+
+local panelSize = Instance.new("UISizeConstraint")
+panelSize.MinSize = Vector2.new(580, 320)
+panelSize.MaxSize = Vector2.new(580, 560)
+panelSize.Parent = panel
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UIConstants.Corners.Panel
@@ -159,27 +167,36 @@ end
 -- the UIGridLayout does not slot them as grid items.
 --------------------------------------------------------------------------------
 
-local gridWrap = Instance.new("Frame")
+-- ScrollingFrame holds the 2x2 card grid. Cells are fixed-offset so they
+-- don't shrink with the panel; CanvasSize tracks the grid's content size
+-- so the scrollbar appears only when the panel is too short for all cards.
+local gridWrap = Instance.new("ScrollingFrame")
 gridWrap.Name = "GridWrap"
--- Sits below the title (40 high + a 16px gap), fills the rest of the panel
--- interior. ClipsDescendants safeguards against the Scale-CellSize + padding
--- overflow gotcha.
 gridWrap.Size = UDim2.new(1, 0, 1, -56)
 gridWrap.Position = UDim2.fromOffset(0, 56)
 gridWrap.BackgroundTransparency = 1
+gridWrap.BorderSizePixel = 0
+gridWrap.ScrollBarThickness = 6
+gridWrap.ScrollBarImageColor3 = UIConstants.Colors.StrokeWarm
+gridWrap.ScrollingDirection = Enum.ScrollingDirection.Y
+gridWrap.CanvasSize = UDim2.fromOffset(0, 0)
 gridWrap.ClipsDescendants = true
 gridWrap.Parent = panel
 
 local grid = Instance.new("UIGridLayout")
 grid.Name = "Grid"
-grid.CellSize = UDim2.new(0.5, -8, 0.5, -8)
-grid.CellPadding = UDim2.new(0, 16, 0, 16)
+grid.CellSize = UDim2.fromOffset(250, 210)
+grid.CellPadding = UDim2.fromOffset(16, 16)
 grid.FillDirection = Enum.FillDirection.Horizontal
 grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-grid.VerticalAlignment = Enum.VerticalAlignment.Center
+grid.VerticalAlignment = Enum.VerticalAlignment.Top
 grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.StartCorner = Enum.StartCorner.TopLeft
 grid.Parent = gridWrap
+
+grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    gridWrap.CanvasSize = UDim2.fromOffset(0, grid.AbsoluteContentSize.Y)
+end)
 
 --------------------------------------------------------------------------------
 -- Card factory. Each card has:
@@ -405,18 +422,15 @@ local function refresh()
                 -- The attribute changed signal below will trigger refresh().
             end)
         else
-            -- Locked premium theme. "🔒 GET" reads as a call to action.
-            -- Latin-1 lock emoji renders on most platforms; if Fredoka misses
-            -- it on a target device, the word GET still carries the meaning.
-            entry.button.Text = "\u{1F512} GET"
+            -- Locked premium theme. The shop pill on MainMenu is the unlock
+            -- path; the locked card here is informational only. Click still
+            -- gives audible feedback so it doesn't feel dead.
+            entry.button.Text = "\u{1F512} LOCKED"
             entry.button.BackgroundColor3 = UIConstants.Colors.WarmCancel
             entry.button.TextColor3 = UIConstants.Colors.TextOnWarm
             entry.clickConn = entry.button.MouseButton1Click:Connect(function()
                 sfx("click")
                 squish(entry.buttonScale)
-                if _G.BobaDropShop and _G.BobaDropShop.open then
-                    _G.BobaDropShop.open()
-                end
             end)
         end
     end
