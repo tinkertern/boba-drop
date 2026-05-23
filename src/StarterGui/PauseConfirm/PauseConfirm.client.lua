@@ -271,21 +271,35 @@ if not leaveName then return end
 local leaveRemote = remotes:WaitForChild(leaveName, 30)
 if not leaveRemote then return end
 
+-- Optional: server gates on MatchMode == "practice" already, but we also
+-- gate client-side so we don't FireServer on every versus pause-modal open.
+local pauseRemote = remotes:WaitForChild("PauseRequest", 10)
+
+local function requestPause(paused)
+    if not pauseRemote then return end
+    if player:GetAttribute("MatchMode") ~= "practice" then return end
+    pauseRemote:FireServer({ paused = paused })
+end
+
 leaveCorner.MouseButton1Click:Connect(function()
     sfx("click")
     squish(leaveCornerScale)
     openModal()
+    requestPause(true)
 end)
 
 stayBtn.MouseButton1Click:Connect(function()
     sfx("click")
     squish(stayScale)
     closeModal()
+    requestPause(false)
 end)
 
 confirmLeaveBtn.MouseButton1Click:Connect(function()
     sfx("back")
     squish(confirmLeaveScale)
+    -- LeaveMatch ends the run anyway, so no resume needed. Server clears
+    -- the pause latch in _closeRoom.
     leaveRemote:FireServer({})
     closeModal()
 end)
