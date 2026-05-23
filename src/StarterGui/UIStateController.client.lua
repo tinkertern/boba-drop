@@ -41,6 +41,7 @@ local VISIBILITY = {
         GarbagePreview = false,
         CounterCancel = false,
         MatchEnd = false,
+        TouchControls = false,
     },
     [STATES.Matching] = {
         MainMenu = false,
@@ -51,6 +52,7 @@ local VISIBILITY = {
         GarbagePreview = false,
         CounterCancel = false,
         MatchEnd = false,
+        TouchControls = false,
     },
     [STATES.InMatch] = {
         MainMenu = false,
@@ -61,6 +63,7 @@ local VISIBILITY = {
         GarbagePreview = true,
         CounterCancel = true,
         MatchEnd = false,
+        TouchControls = true,
     },
     [STATES.MatchEnd] = {
         MainMenu = false,
@@ -71,6 +74,7 @@ local VISIBILITY = {
         GarbagePreview = false,
         CounterCancel = false,
         MatchEnd = true,
+        TouchControls = false,
     },
 }
 
