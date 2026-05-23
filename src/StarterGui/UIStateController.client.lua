@@ -79,9 +79,18 @@ if not VISIBILITY[currentState] then
     currentState = STATES.MainMenu
 end
 
+-- Practice mode overrides: when the player is in_match in a solo room,
+-- there is no opponent and no garbage in/out, so these HUD pieces hide
+-- regardless of the base in_match map. The MatchMode attribute is written
+-- by the server (RoomManager) on solo room start and cleared on close.
+local PRACTICE_OVERRIDES = {
+    GarbagePreview = false,
+}
+
 local function applyVisibility()
     local map = VISIBILITY[currentState]
     if not map then return end
+    local matchMode = player:GetAttribute("MatchMode")
     -- Iterate by ScreenGui IsA-check, not by FindFirstChild(name): Rojo mirrors
     -- src/StarterGui/<Name>/ as a Folder in PlayerGui with the same name as the
     -- ScreenGui the inner script creates (Lobby, MatchEnd, Shop, Backdrop, MainMenu
@@ -90,7 +99,14 @@ local function applyVisibility()
     -- after the initial frame stop working.
     for _, gui in playerGui:GetChildren() do
         if gui:IsA("ScreenGui") and map[gui.Name] ~= nil then
-            gui.Enabled = map[gui.Name]
+            local enabled = map[gui.Name]
+            if matchMode == "practice"
+                and currentState == STATES.InMatch
+                and PRACTICE_OVERRIDES[gui.Name] ~= nil
+            then
+                enabled = PRACTICE_OVERRIDES[gui.Name]
+            end
+            gui.Enabled = enabled
         end
     end
 end
@@ -118,6 +134,11 @@ player:GetAttributeChangedSignal("GameState"):Connect(function()
     currentState = newState
     applyVisibility()
 end)
+
+-- Re-apply when match mode flips (server sets MatchMode on solo room start
+-- and clears on close). Order vs GameState isn't guaranteed, so the
+-- standalone listener keeps the override consistent regardless.
+player:GetAttributeChangedSignal("MatchMode"):Connect(applyVisibility)
 
 -- Lightweight global for debug/manual driving from the command bar in Studio.
 -- Set _G.BobaDropUIState.set("in_match") to test transitions before the server

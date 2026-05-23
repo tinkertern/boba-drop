@@ -382,8 +382,16 @@ end
 
 local function updateVisibility()
     local state = player:GetAttribute("GameState")
+    local matchMode = player:GetAttribute("MatchMode")
+    -- Practice rooms are solo, so the opponent board has nothing to render.
+    -- Stay hidden even when GameState is in_match.
+    if matchMode == "practice" then
+        screenGui.Enabled = false
+        return
+    end
     screenGui.Enabled = (state == "in_match")
 end
 
 player:GetAttributeChangedSignal("GameState"):Connect(updateVisibility)
+player:GetAttributeChangedSignal("MatchMode"):Connect(updateVisibility)
 updateVisibility()
