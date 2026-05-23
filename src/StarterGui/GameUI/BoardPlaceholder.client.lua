@@ -689,17 +689,19 @@ local function traceLanding(pivotRow, pivotCol, dr, dc)
     return 1
 end
 
--- Light pearl colors (cream / white / pale) blend into the cup floor when
--- used directly for the ghost outline. Clamp the HSV value down so the
--- outline darkens enough for contrast, but leave saturation alone — bumping
--- saturation turned near-white pearls into saturated brown outlines, which
--- read as the wrong hue. Letting saturation stay low keeps a "white pearl"
--- ghost looking like a dark grey ring, which reads as the same pearl just
--- shadowed, not a different color.
+-- Ghost outline color rule: match the pearl exactly so the preview reads
+-- as "this color is landing here", EXCEPT for near-white pearls (high
+-- value + low saturation) where same-color outline disappears into the
+-- cream cup floor. Those get substituted with a dark warm grey so the
+-- ring stays visible. Saturated and dark pearls (brown / pink / green /
+-- caramel) keep their true color.
+local GHOST_FALLBACK_GREY = Color3.fromRGB(80, 60, 45)
 local function ghostStrokeColor(color)
-    local h, s, v = Color3.toHSV(color)
-    if v > 0.55 then v = 0.45 end
-    return Color3.fromHSV(h, s, v)
+    local _h, s, v = Color3.toHSV(color)
+    if v > 0.85 and s < 0.20 then
+        return GHOST_FALLBACK_GREY
+    end
+    return color
 end
 
 -- Build a single ghost pearl: an outline-only ring in a darkened version of
