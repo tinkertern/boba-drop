@@ -171,7 +171,7 @@ heroLayout.FillDirection = Enum.FillDirection.Vertical
 heroLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 heroLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 heroLayout.SortOrder = Enum.SortOrder.LayoutOrder
-heroLayout.Padding = UDim.new(0, 50)
+heroLayout.Padding = UDim.new(0, 24)
 heroLayout.Parent = heroStack
 
 --------------------------------------------------------------------------------
@@ -398,7 +398,7 @@ playGroup.Parent = heroStack
 local playGroupLayout = Instance.new("UIListLayout")
 playGroupLayout.FillDirection = Enum.FillDirection.Vertical
 playGroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-playGroupLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+playGroupLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 playGroupLayout.SortOrder = Enum.SortOrder.LayoutOrder
 playGroupLayout.Padding = UDim.new(0, 14)
 playGroupLayout.Parent = playGroup
