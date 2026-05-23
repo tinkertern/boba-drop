@@ -689,11 +689,23 @@ local function traceLanding(pivotRow, pivotCol, dr, dc)
     return 1
 end
 
--- Build a single ghost pearl: an outline-only ring in the pearl's color so
--- the landing position reads clearly against the cream cup floor without
--- ever being mistaken for a real (filled) pearl. Solid stroke at thickness
--- 3 gives enough weight to be legible against the new milk-tea backdrop;
--- BackgroundTransparency=1 keeps the cell visible inside the outline.
+-- Light pearl colors (cream / white / pale) blend into the cup floor when
+-- used directly for the ghost outline. Clamp the HSV value down and bump
+-- saturation up so the outline always has enough contrast against the
+-- cream cup background while still reading as the same hue as the pearl
+-- that's about to drop.
+local function ghostStrokeColor(color)
+    local h, s, v = Color3.toHSV(color)
+    if v > 0.55 then v = 0.45 end
+    if s < 0.30 then s = 0.50 end
+    return Color3.fromHSV(h, s, v)
+end
+
+-- Build a single ghost pearl: an outline-only ring in a darkened version of
+-- the pearl's color so the landing position reads clearly against the cream
+-- cup floor without being mistaken for a real (filled) pearl. Thickness 4,
+-- transparency 0 for full opacity since "barely visible" was the complaint
+-- on light colors.
 local function buildGhostPearl(row, col, color)
     local cell = cellsByPos[posKey(row, col)]
     if not cell then return nil end
@@ -713,9 +725,9 @@ local function buildGhostPearl(row, col, color)
     corner.Parent = p
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = color
-    stroke.Thickness = 3
-    stroke.Transparency = 0.15
+    stroke.Color = ghostStrokeColor(color)
+    stroke.Thickness = 4
+    stroke.Transparency = 0
     stroke.Parent = p
     return p
 end
