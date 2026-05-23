@@ -155,12 +155,12 @@ local heroStack = Instance.new("Frame")
 heroStack.Name = "HeroStack"
 heroStack.Size = UDim2.fromOffset(520, 0)
 heroStack.AutomaticSize = Enum.AutomaticSize.Y
--- Top-anchored at 8% from the top of the usable viewport. Anchoring at
--- center pushed the title down to mid-screen and the SINGLE PLAYER
--- button into the pill row's territory. Keeping it top-anchored puts
--- the wordmark in classic arcade-title position and gives the 3-button
--- group room to land well above the bottom pill row.
-heroStack.Position = UDim2.fromScale(0.5, 0.08)
+-- Top-anchored at a fixed 40px offset (not Scale-based) so the title
+-- sits in a predictable place regardless of viewport height. Center
+-- anchoring pushed the title to mid-screen; even 8% Scale was reading
+-- too low on Sarah's playtest. Fixed offset locks the wordmark to the
+-- top region and lets the button group land cleanly above the pill row.
+heroStack.Position = UDim2.new(0.5, 0, 0, 40)
 heroStack.AnchorPoint = Vector2.new(0.5, 0)
 heroStack.BackgroundTransparency = 1
 heroStack.ZIndex = 5
