@@ -22,24 +22,38 @@ local function partnerOffset(orientation)
 end
 
 function GameState.new(ctx)
-    assert(ctx.players and #ctx.players == 2, "GameState requires exactly 2 players")
+    -- 1 player = practice mode (solo, no opponent). 2 players = versus.
+    -- All routing that previously assumed exactly-2 is now guarded on _isSolo.
+    assert(ctx.players and (#ctx.players == 1 or #ctx.players == 2), "GameState requires 1 or 2 players")
     assert(ctx.seed, "GameState requires seed")
     local self = setmetatable({}, GameState)
     self._players = ctx.players
+    self._isSolo = (#ctx.players == 1)
+    self._mode = self._isSolo and "practice" or "versus"
     self._baseSeed = ctx.seed
     self._phase = "waiting"
     self._roundNumber = 0
-    self._roundsWon = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
-    self._scores = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 } -- per-round
-    self._pendingGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
-    self._placementsUntilGarbage = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
+    self._roundsWon = {}
+    self._scores = {} -- per-round
+    self._pendingGarbage = {}
+    self._placementsUntilGarbage = {}
+    self._bestChain = {}
+    for _, p in ctx.players do
+        self._roundsWon[p] = 0
+        self._scores[p] = 0
+        self._pendingGarbage[p] = 0
+        self._placementsUntilGarbage[p] = 0
+        self._bestChain[p] = 0
+    end
     self._boards = {}
     self._activePieces = {}
-    self._bestChain = { [ctx.players[1]] = 0, [ctx.players[2]] = 0 }
     self._subscribers = {}
     self._matchWinner = nil
     return self
 end
+
+function GameState:isSolo() return self._isSolo end
+function GameState:mode() return self._mode end
 
 function GameState:phase() return self._phase end
 function GameState:roundsWon(playerId) return self._roundsWon[playerId] end
@@ -93,10 +107,23 @@ function GameState:announceRoundStartCountdown(startsAt)
 end
 
 function GameState:_otherPlayer(playerId)
+    -- Solo states have no opponent; callers must guard with _isSolo before
+    -- invoking this. Kept as a hard error so a missed guard surfaces loudly
+    -- in tests rather than silently corrupting downstream payloads.
     for _, p in self._players do
         if p ~= playerId then return p end
     end
     error("unknown player " .. tostring(playerId))
+end
+
+function GameState:_playerKeyedTable(source)
+    -- Build a player-keyed map from a source table. Versus payloads always
+    -- carry both players' keys; solo payloads carry just the one.
+    local out = {}
+    for _, p in self._players do
+        out[p] = source[p]
+    end
+    return out
 end
 
 function GameState:_endRound(winner, loser, reason)
@@ -106,19 +133,38 @@ function GameState:_endRound(winner, loser, reason)
         loser = loser,
         reason = reason,
         round = self._roundNumber,
-        scores = { [self._players[1]] = self._scores[self._players[1]], [self._players[2]] = self._scores[self._players[2]] },
+        scores = self:_playerKeyedTable(self._scores),
     })
     if self._roundsWon[winner] >= Constants.ROUNDS_TO_WIN then
         self._phase = "matchOver"
         self._matchWinner = winner
         self:_dispatch("onMatchEnd", {
             winner = winner,
-            finalScores = { [self._players[1]] = self._scores[self._players[1]], [self._players[2]] = self._scores[self._players[2]] },
-            bestChain = { [self._players[1]] = self._bestChain[self._players[1]], [self._players[2]] = self._bestChain[self._players[2]] },
+            result = "win",
+            mode = self._mode,
+            finalScores = self:_playerKeyedTable(self._scores),
+            bestChain = self:_playerKeyedTable(self._bestChain),
         })
     else
         self._phase = "betweenRounds"
     end
+end
+
+function GameState:_endPracticeOnTopout(playerId)
+    -- Solo topout: no opponent to declare as winner, so we skip _endRound
+    -- entirely (no onRoundEnd → MatchEnd client's reason subtitle stays
+    -- empty, which matches the practice-mode UI variant). Fire onMatchEnd
+    -- directly with result = "practice_ended".
+    self._phase = "matchOver"
+    self._matchWinner = nil
+    self:_dispatch("onMatchEnd", {
+        winner = nil,
+        loser = playerId,
+        result = "practice_ended",
+        mode = self._mode,
+        finalScores = self:_playerKeyedTable(self._scores),
+        bestChain = self:_playerKeyedTable(self._bestChain),
+    })
 end
 
 function GameState:forfeitRound(loserId, reason)
@@ -154,10 +200,12 @@ function GameState:applyOutgoingChain(senderPlayerId, outgoingCubes)
             cellsDropped = {},
         })
     end
-    if outgoingCubes > 0 then
+    if outgoingCubes > 0 and not self._isSolo then
         local opponent = self:_otherPlayer(senderPlayerId)
         self:queueGarbage(opponent, outgoingCubes)
     end
+    -- Solo: remainder is dropped on the floor. ChainResolved already carries
+    -- garbageOut so the client can still show "→ N ICE" floating text.
 end
 
 -- ----- Active piece lifecycle -----
@@ -381,8 +429,12 @@ function GameState:_lockPiece(playerId)
 
     -- Overflow check: any cell occupied in the danger rows (above visible) ends the round
     if self:_isOverflowed(playerId) then
-        local winner = self:_otherPlayer(playerId)
-        self:_endRound(winner, playerId, "overflow")
+        if self._isSolo then
+            self:_endPracticeOnTopout(playerId)
+        else
+            local winner = self:_otherPlayer(playerId)
+            self:_endRound(winner, playerId, "overflow")
+        end
         return
     end
 
@@ -395,8 +447,12 @@ function GameState:_lockPiece(playerId)
     -- If the freshly-spawned piece overlaps existing cells, that's also overflow
     local fresh = self._activePieces[playerId]
     if fresh and not self:_pieceFits(playerId, fresh) then
-        local winner = self:_otherPlayer(playerId)
-        self:_endRound(winner, playerId, "overflow")
+        if self._isSolo then
+            self:_endPracticeOnTopout(playerId)
+        else
+            local winner = self:_otherPlayer(playerId)
+            self:_endRound(winner, playerId, "overflow")
+        end
     end
 end
 
