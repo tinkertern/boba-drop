@@ -226,7 +226,11 @@ local function buildCard(tier, layoutOrder)
     descLabel.BackgroundTransparency = 1
     descLabel.FontFace = UIConstants.Fonts.Tutorial
     descLabel.TextSize = 13
-    descLabel.TextColor3 = tier.locked and UIConstants.Colors.TextSoft or UIConstants.Colors.TextDark
+    -- Use the tier's textColor for the desc too so it stays readable on dark
+    -- backgrounds (PRO's WarmDark bg with hardcoded TextDark desc made the
+    -- subtitle invisible — same dark brown on both layers). Locked tiers
+    -- keep the muted TextSoft for the cream-on-cream "coming soon" look.
+    descLabel.TextColor3 = tier.locked and UIConstants.Colors.TextSoft or tier.textColor
     descLabel.TextXAlignment = Enum.TextXAlignment.Right
     descLabel.TextYAlignment = Enum.TextYAlignment.Center
     descLabel.Text = tier.desc
